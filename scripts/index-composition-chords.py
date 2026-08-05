@@ -146,9 +146,9 @@ def composition_classify_match(track: dict[str, Any], best: Any, second: Any | N
             return "medium"
         if distinctive and (best.artist >= 20 or duration_difference is None or duration_difference <= 150):
             return "medium"
-        if best.artist >= 55:
+        if best.artist >= 82 and (duration_difference is None or duration_difference <= 90):
             return "low"
-        if duration_difference is not None and duration_difference <= 20 and margin >= 1.0:
+        if best.artist >= 45 and duration_difference is not None and duration_difference <= 12 and margin >= 3.0:
             return "low"
         return None
 
