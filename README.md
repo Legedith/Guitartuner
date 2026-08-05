@@ -27,11 +27,21 @@ Fretline is a minimalist, installable guitar and ukulele tuner with tuning-aware
 - Realistic strummed chord previews generated with the same on-device string model as the tuner
 - Essential-chord shortcuts and finger-number guidance
 
-## Song library and play along
+## Bundled song library
 
-- Loads a public YouTube or YouTube Music playlist through YouTube's embedded player after explicit user action
-- Keeps playlist metadata and personal chord maps in browser storage
-- Reads available song titles from the embedded player; unavailable or non-embeddable songs remain under YouTube's control
+The repository contains a generated catalog for the supplied YouTube Music playlist. The current catalog includes all 1,611 playable playlist entries, including repeated videos as separate playlist positions.
+
+- The catalog appears immediately; no Load or Read titles step is required
+- Search covers the complete catalog
+- Rows render automatically in small batches to keep mobile scrolling responsive
+- Selecting a song loads its exact YouTube video ID instead of relying on the embedded player's truncated playlist list
+- Metadata is refreshed monthly by `.github/workflows/index-playlist.yml`
+- The indexing workflow reads playlist metadata only and does not download or commit song audio
+
+YouTube supplies playback and controls whether an individual video permits embedding. The static catalog, tuner, chord library, and locally saved chord maps remain available without using YouTube's playlist endpoint.
+
+## Play along
+
 - Supports exact timed changes such as `0:12 Am` or equal-bar progressions such as `C | G | Am | F`
 - Synchronized current and upcoming chords
 - Transpose, playback speed, seek, and A/B looping
@@ -39,7 +49,7 @@ Fretline is a minimalist, installable guitar and ukulele tuner with tuning-aware
 - Export and import personal chord maps as JSON
 - Optional links to licensed chord sources
 
-Fretline does not scrape or redistribute commercial chord transcriptions. Use a licensed service or your own chart, then store the timing and progression locally. YouTube supplies the song playback; Fretline does not download or proxy media.
+YouTube playlist metadata does not contain chord progressions. Fretline therefore does not fabricate charts or scrape and redistribute commercial transcriptions. Use a licensed chord source, an authorized provider export, or your own chart, then store its timing and progression locally.
 
 ## Reference strings
 
@@ -62,7 +72,11 @@ npm test
 npm run check
 ```
 
-The test suite checks pitch detection, tuning data, generated reference strings, tuning-aware chord voicings, playlist parsing, chord-map timing, and transposition.
+The test suite checks pitch detection, tuning data, generated reference strings, tuning-aware chord voicings, playlist parsing, the bundled catalog, chord-map timing, transposition, application wiring, and offline assets.
+
+## Refresh the playlist catalog
+
+Run the **Index complete YouTube Music playlist** workflow manually, or wait for its monthly schedule. The workflow follows every playlist continuation, refuses to publish fewer than 1,000 entries, validates the application, and commits the refreshed catalog.
 
 ## Deployment
 
@@ -74,7 +88,7 @@ The public URL is:
 
 ## Browser support
 
-Fretline targets current versions of Chrome, Edge, Firefox, and Safari. It uses twelve-tone equal temperament and requires microphone permission for live tuning. YouTube play-along requires network access and a playlist whose videos permit embedded playback; the tuner, chord library, and locally stored chord maps remain available offline.
+Fretline targets current versions of Chrome, Edge, Firefox, and Safari. It uses twelve-tone equal temperament and requires microphone permission for live tuning. YouTube play-along requires network access and a video that permits embedded playback.
 
 ## License
 
