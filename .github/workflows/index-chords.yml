@@ -11,7 +11,7 @@ on:
       - scripts/index-composition-chords.py
       - src/data/playlist-catalog.json
       - tests/chords.test.mjs
-      - tests/composition-matcher.test.mjs
+      - tests/test_composition_matcher.py
   workflow_dispatch:
   schedule:
     - cron: '43 5 2 * *'
@@ -72,6 +72,9 @@ jobs:
               --repo-type dataset \
               --local-dir /tmp/fretline-chord-sources/spotify
           fi
+
+      - name: Validate composition policy
+        run: python -m unittest tests/test_composition_matcher.py
 
       - name: Match compositions and build chord maps
         run: |
