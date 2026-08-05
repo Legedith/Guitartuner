@@ -1,9 +1,11 @@
 import { parseChordSymbol, transposeChordSymbol } from './chords.js';
 
 export const DEFAULT_PLAYLIST_URL = 'https://music.youtube.com/playlist?list=PL0gpFgtesNu015JGaKSx8BonbVjGRefKb';
+export const DEFAULT_PLAYLIST_CATALOG_URL = './data/playlist-catalog.json';
 
 function finiteNumber(value, fallback = 0) { const number = Number(value); return Number.isFinite(number) ? number : fallback; }
 function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
+function cleanText(value, limit = 500) { return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, limit) : ''; }
 
 export function extractYouTubePlaylistId(value) {
   const source = String(value ?? '').trim();
@@ -142,18 +144,75 @@ export function sanitizePlaylistTracks(value) {
   const seen = new Set(); const tracks = [];
   for (const item of value) {
     const videoId = extractYouTubeVideoId(item?.videoId);
-    if (!videoId || seen.has(videoId)) continue;
-    seen.add(videoId);
+    if (!videoId) continue;
+    const index = Math.max(0, Math.floor(finiteNumber(item.index, tracks.length)));
+    const suppliedCatalogId = cleanText(item.catalogId, 160);
+    const catalogId = suppliedCatalogId || `${videoId}:${index}`;
+    const dedupeKey = suppliedCatalogId ? catalogId : videoId;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    const thumbnail = sanitizeExternalUrl(item.thumbnail) || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
     tracks.push({
+      catalogId,
       videoId,
-      index: Math.max(0, Math.floor(finiteNumber(item.index, tracks.length))),
-      title: typeof item.title === 'string' ? item.title.trim().slice(0, 160) : '',
-      artist: typeof item.artist === 'string' ? item.artist.trim().slice(0, 120) : '',
+      index,
+      title: cleanText(item.title, 200),
+      artist: cleanText(item.artist, 160),
+      album: cleanText(item.album, 180),
+      releaseYear: clamp(Math.floor(finiteNumber(item.releaseYear)), 0, 2200),
       duration: clamp(finiteNumber(item.duration), 0, 86400),
-      thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+      thumbnail,
     });
   }
-  return tracks.sort((left, right) => left.index - right.index).slice(0, 500);
+  return tracks.sort((left, right) => left.index - right.index).slice(0, 5000);
+}
+
+function richerTrack(base, overlay) {
+  if (!overlay) return base;
+  return {
+    ...base,
+    title: overlay.title || base.title,
+    artist: overlay.artist || base.artist,
+    album: overlay.album || base.album,
+    releaseYear: overlay.releaseYear || base.releaseYear,
+    duration: overlay.duration || base.duration,
+    thumbnail: overlay.thumbnail || base.thumbnail,
+  };
+}
+
+export function mergePlaylistTracks(primary, secondary) {
+  const baseTracks = sanitizePlaylistTracks(primary);
+  const overlays = sanitizePlaylistTracks(secondary);
+  if (!baseTracks.length) return overlays;
+  const byCatalogId = new Map(overlays.map((track) => [track.catalogId, track]));
+  const byVideoId = new Map();
+  for (const track of overlays) if (!byVideoId.has(track.videoId)) byVideoId.set(track.videoId, track);
+  const merged = baseTracks.map((track) => richerTrack(track, byCatalogId.get(track.catalogId) ?? byVideoId.get(track.videoId)));
+  const baseIds = new Set(baseTracks.map((track) => track.catalogId));
+  const baseVideos = new Set(baseTracks.map((track) => track.videoId));
+  for (const track of overlays) if (!baseIds.has(track.catalogId) && !baseVideos.has(track.videoId)) merged.push(track);
+  return sanitizePlaylistTracks(merged);
+}
+
+export async function loadBundledPlaylistCatalog(url = DEFAULT_PLAYLIST_CATALOG_URL) {
+  const response = await fetch(url, { cache: 'no-cache' });
+  if (!response.ok) throw new Error(`Playlist catalog request failed with ${response.status}.`);
+  const value = await response.json();
+  const tracks = sanitizePlaylistTracks(value?.tracks);
+  if (value?.schema !== 'fretline-playlist-catalog' || !tracks.length) throw new Error('The bundled playlist catalog is empty or invalid.');
+  return {
+    schema: 'fretline-playlist-catalog',
+    version: Math.max(1, Math.floor(finiteNumber(value.version, 1))),
+    playlistId: cleanText(value.playlistId, 100) || extractYouTubePlaylistId(value.sourceUrl) || '',
+    sourceUrl: sanitizeExternalUrl(value.sourceUrl) || DEFAULT_PLAYLIST_URL,
+    title: cleanText(value.title, 200) || 'Personal YouTube Music playlist',
+    owner: cleanText(value.owner, 160),
+    generatedAt: typeof value.generatedAt === 'string' ? value.generatedAt : null,
+    reportedEntries: Math.max(tracks.length, Math.floor(finiteNumber(value.reportedEntries, tracks.length))),
+    playableEntries: tracks.length,
+    skippedEntries: Math.max(0, Math.floor(finiteNumber(value.skippedEntries))),
+    tracks,
+  };
 }
 
 export function sanitizeSongCharts(value) {
@@ -169,8 +228,8 @@ export function sanitizeSongCharts(value) {
     const parsedEvents = parseChordChart(raw, { bpm, beatsPerChord });
     output[videoId] = {
       videoId,
-      title: typeof item.title === 'string' ? item.title.trim().slice(0, 160) : '',
-      artist: typeof item.artist === 'string' ? item.artist.trim().slice(0, 120) : '',
+      title: cleanText(item.title, 160),
+      artist: cleanText(item.artist, 120),
       bpm,
       beatsPerChord,
       raw,
