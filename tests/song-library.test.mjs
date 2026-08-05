@@ -27,7 +27,7 @@ test('extracts supported YouTube video links', () => {
   assert.equal(extractYouTubeVideoId('dQw4w9WgXcQ'), 'dQw4w9WgXcQ');
   assert.equal(extractYouTubeVideoId('https://youtu.be/dQw4w9WgXcQ?t=10'), 'dQw4w9WgXcQ');
   assert.equal(extractYouTubeVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PL123'), 'dQw4w9WgXcQ');
-  assert.equal(extractYouTubeVideoId('not-a-video'), null);
+  assert.equal(extractYouTubeVideoId('not-a-video-id'), null);
 });
 
 test('parses and formats song time', () => {
