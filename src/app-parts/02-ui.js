@@ -1,4 +1,4 @@
-function saveSettings() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (_) {} }
+function saveSettings() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); return true; } catch (_) { return false; } }
 function resolvedDarkTheme() { return settings.theme === 'dark' || (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches); }
 function applyTheme() {
   document.documentElement.dataset.theme = settings.theme;
