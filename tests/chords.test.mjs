@@ -26,8 +26,9 @@ test('parses common, extended, and slash chord spellings', () => {
   assert.equal(parseChordSymbol('Cadd9').quality, 'add9');
   assert.equal(parseChordSymbol('Cm9').quality, 'm9');
   assert.equal(parseChordSymbol('Cdim7').quality, 'dim7');
+  assert.equal(parseChordSymbol('C13').quality, '13');
   assert.equal(parseChordSymbol('N.C.').rest, true);
-  assert.equal(parseChordSymbol('C13'), null);
+  assert.equal(parseChordSymbol('C15'), null);
 });
 
 test('normalizes note names and formats accidentals', () => {

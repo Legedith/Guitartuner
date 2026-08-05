@@ -39,10 +39,13 @@ test('every local HTML asset exists', () => {
   for (const asset of assets) assert.ok(existsSync(resolve(root, asset)), `missing ${asset}`);
 });
 
-test('the service worker precaches every boot dependency', () => {
+test('the service worker precaches every boot dependency and generated catalog asset', () => {
   const cached = new Set([...serviceWorker.matchAll(/['"](\.\/[^'"]+)['"]/g)].map((match) => match[1]));
   const imports = [...boot.matchAll(/from ['"](\.\/[^'"]+)['"]/g)].map((match) => `./src/${match[1].slice(2)}`);
   const parts = [...boot.matchAll(/['"](\.\/app-parts\/[^'"]+)['"]/g)].map((match) => `./src/${match[1].slice(2)}`);
   for (const dependency of [...imports, ...parts]) assert.ok(cached.has(dependency), `offline cache is missing ${dependency}`);
   assert.ok(cached.has('./styles/practice.css'));
+  assert.ok(cached.has('./styles/chord-catalog.css'));
+  assert.ok(cached.has('./src/data/playlist-catalog.json'));
+  assert.ok(cached.has('./src/data/chord-catalog.json'));
 });

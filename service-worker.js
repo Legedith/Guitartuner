@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fretline-v4';
+const CACHE_NAME = 'fretline-v5';
 const APP_ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,7 @@ const APP_ASSETS = [
   './styles/tuner.css',
   './styles/dialogs.css',
   './styles/practice.css',
+  './styles/chord-catalog.css',
   './src/boot.js',
   './src/chords.js',
   './src/pitch.js',
@@ -13,6 +14,7 @@ const APP_ASSETS = [
   './src/song-library.js',
   './src/tunings.js',
   './src/data/playlist-catalog.json',
+  './src/data/chord-catalog.json',
   './src/app-parts/01-state.js',
   './src/app-parts/02-ui.js',
   './src/app-parts/03-selection.js',
@@ -22,6 +24,7 @@ const APP_ASSETS = [
   './src/app-parts/07-events.js',
   './src/app-parts/08-chords.js',
   './src/app-parts/09-library.js',
+  './src/app-parts/10-chord-catalog.js',
   './manifest.webmanifest',
   './assets/icon.svg',
   './assets/icon-192.png',
