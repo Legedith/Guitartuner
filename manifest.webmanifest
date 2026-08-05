@@ -1,7 +1,7 @@
 {
-  "name": "Fretline Guitar & Ukulele Tuner",
+  "name": "Fretline Tuner, Chords & Play Along",
   "short_name": "Fretline",
-  "description": "A precise, private guitar and ukulele tuner that works offline.",
+  "description": "A private guitar and ukulele tuner with tuning-aware chord charts, chord sounds, and YouTube play-along tools.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
@@ -9,7 +9,7 @@
   "orientation": "portrait-primary",
   "background_color": "#f4f5ef",
   "theme_color": "#f4f5ef",
-  "categories": ["music", "utilities"],
+  "categories": ["music", "education", "utilities"],
   "icons": [
     {
       "src": "./assets/icon-192.png",
