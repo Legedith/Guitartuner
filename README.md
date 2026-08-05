@@ -22,7 +22,8 @@ Fretline is a minimalist, installable guitar and ukulele tuner with tuning-aware
 - Chord diagrams generated from the active tuning rather than hard-coded standard-tuning pictures
 - Multiple playable voicings up the neck
 - Guitar and ukulele support, including alternate and custom tunings
-- Major, minor, dominant 7, major 7, minor 7, sus2, sus4, diminished, augmented, and power chords
+- Major, minor, dominant 7, major 7, minor 7, major 6, minor 6, add 9, dominant 9, minor 9, sus2, sus4, diminished, diminished 7, augmented, power, and slash chords
+- Slash-chord diagrams enforce the requested bass note rather than displaying the label over a root-position shape
 - Realistic strummed chord previews generated with the same on-device string model as the tuner
 - Essential-chord shortcuts and finger-number guidance
 
