@@ -22,14 +22,14 @@ Fretline is a minimalist, installable guitar and ukulele tuner with tuning-aware
 - Chord diagrams generated from the active tuning rather than hard-coded standard-tuning pictures
 - Multiple playable voicings up the neck
 - Guitar and ukulele support, including alternate and custom tunings
-- Major, minor, dominant 7, major 7, minor 7, major 6, minor 6, add 9, dominant 9, minor 9, sus2, sus4, diminished, diminished 7, augmented, power, and slash chords
+- Common triads, sevenths, sixths, ninths, elevenths, thirteenths, suspended, diminished, augmented, altered dominant, added-tone, power, and slash chords
 - Slash-chord diagrams enforce the requested bass note rather than displaying the label over a root-position shape
 - Realistic strummed chord previews generated with the same on-device string model as the tuner
 - Essential-chord shortcuts and finger-number guidance
 
 ## Bundled song library
 
-The repository contains a generated catalog for the supplied YouTube Music playlist. The current catalog includes all 1,611 playable playlist entries, including repeated videos as separate playlist positions.
+The repository contains a generated catalog for the supplied YouTube Music playlist. The current catalog includes all **1,611 playable playlist entries**, including repeated videos as separate playlist positions.
 
 - The catalog appears immediately; no Load or Read titles step is required
 - Search covers the complete catalog
@@ -40,16 +40,29 @@ The repository contains a generated catalog for the supplied YouTube Music playl
 
 YouTube supplies playback and controls whether an individual video permits embedding. The static catalog, tuner, chord library, and locally saved chord maps remain available without using YouTube's playlist endpoint.
 
+## Bundled best-effort song chords
+
+Fretline currently includes **519 recording-matched chord maps**, covering **32.22%** of the 1,611 unique playlist videos:
+
+- 496 high-confidence matches
+- 15 medium-confidence matches
+- 8 low-confidence matches
+- 1,092 songs left unmatched rather than assigned an ambiguous or weak result
+
+The matcher combines normalized song title, artist, recording duration, version markers such as live/acoustic/remix, and runner-up ambiguity. Each accepted chart records the matched Spotify track, score components, confidence level, source, license, and any chord-spelling simplifications.
+
+Chord order and section structure come from Chordonomicon. Exact change timestamps are not present in that dataset, so Fretline fits the changes uniformly to the YouTube track duration and labels the timing as estimated. The interface shows this limitation and the confidence level beside every bundled chart. A personal edit always overrides the bundled version on that device.
+
+The monthly `.github/workflows/index-chords.yml` workflow rebuilds the catalog from Chordonomicon and Spotify metadata, rejects weak or version-conflicting matches, validates every event and chord symbol, and refuses to publish fewer than 100 accepted charts.
+
 ## Play along
 
-- Supports exact timed changes such as `0:12 Am` or equal-bar progressions such as `C | G | Am | F`
-- Synchronized current and upcoming chords
+- Synchronized current and upcoming chord display for bundled or personal maps
 - Transpose, playback speed, seek, and A/B looping
 - Tap the current diagram to hear the chord
+- Supports exact personal changes such as `0:12 Am` or equal-bar progressions such as `C | G | Am | F`
 - Export and import personal chord maps as JSON
-- Optional links to licensed chord sources
-
-YouTube playlist metadata does not contain chord progressions. Fretline therefore does not fabricate charts or scrape and redistribute commercial transcriptions. Use a licensed chord source, an authorized provider export, or your own chart, then store its timing and progression locally.
+- Optional links to external chord sources
 
 ## Reference strings
 
@@ -72,11 +85,11 @@ npm test
 npm run check
 ```
 
-The test suite checks pitch detection, tuning data, generated reference strings, tuning-aware chord voicings, playlist parsing, the bundled catalog, chord-map timing, transposition, application wiring, and offline assets.
+The test suite checks pitch detection, tuning data, generated reference strings, tuning-aware chord voicings, playlist parsing, the complete playlist catalog, all bundled chord events and symbols, confidence reconciliation, chord-map timing, transposition, application wiring, and offline assets.
 
-## Refresh the playlist catalog
+## Refresh generated catalogs
 
-Run the **Index complete YouTube Music playlist** workflow manually, or wait for its monthly schedule. The workflow follows every playlist continuation, refuses to publish fewer than 1,000 entries, validates the application, and commits the refreshed catalog.
+Run **Index complete YouTube Music playlist** to rebuild playlist metadata. Run **Build best-effort chord catalog** to rebuild recording matches and chord maps. Both also run the application validation suite before committing generated output.
 
 ## Deployment
 
@@ -90,6 +103,6 @@ The public URL is:
 
 Fretline targets current versions of Chrome, Edge, Firefox, and Safari. It uses twelve-tone equal temperament and requires microphone permission for live tuning. YouTube play-along requires network access and a video that permits embedded playback.
 
-## License
+## Licenses
 
-MIT
+Application source code is MIT licensed. The bundled generated chord catalog is a separate CC BY-NC 4.0 data distribution derived from Chordonomicon and Spotify metadata. See [`THIRD_PARTY_DATA.md`](THIRD_PARTY_DATA.md) for attribution, modifications, and accuracy limitations.
