@@ -9,6 +9,7 @@ import {
   librarySummary,
   parseChordChart,
   parseTimestamp,
+  sanitizeExternalUrl,
   sanitizePlaylistTracks,
   sanitizeSongCharts,
   transposeChordEvents,
@@ -30,6 +31,13 @@ test('extracts supported YouTube video links', () => {
   assert.equal(extractYouTubeVideoId('not-a-video-id'), null);
 });
 
+test('allows only safe external chord-source links', () => {
+  assert.equal(sanitizeExternalUrl('https://chordify.net/chords/example'), 'https://chordify.net/chords/example');
+  assert.equal(sanitizeExternalUrl('http://example.com/chart'), 'http://example.com/chart');
+  assert.equal(sanitizeExternalUrl('javascript:alert(1)'), '');
+  assert.equal(sanitizeExternalUrl('not a url'), '');
+});
+
 test('parses and formats song time', () => {
   assert.equal(parseTimestamp('1:23'), 83);
   assert.equal(parseTimestamp('1:02:03'), 3723);
@@ -40,12 +48,12 @@ test('parses and formats song time', () => {
 });
 
 test('parses exact timed chord changes and sections', () => {
-  const events = parseChordChart('[Intro]\n0:00 C\n0:12 G\n[Verse]\n0:24 Am\n0:36 F');
+  const events = parseChordChart('[Intro]\n0:00 Cadd9\n0:12 G/B\n[Verse]\n0:24 Am9\n0:36 Fmaj7');
   assert.deepEqual(events.map(({ time, chord, section }) => ({ time, chord, section })), [
-    { time: 0, chord: 'C', section: 'Intro' },
-    { time: 12, chord: 'G', section: '' },
-    { time: 24, chord: 'Am', section: 'Verse' },
-    { time: 36, chord: 'F', section: '' },
+    { time: 0, chord: 'Cadd9', section: 'Intro' },
+    { time: 12, chord: 'G/B', section: '' },
+    { time: 24, chord: 'Am9', section: 'Verse' },
+    { time: 36, chord: 'Fmaj7', section: '' },
   ]);
 });
 
@@ -86,11 +94,19 @@ test('sanitizes playlist metadata and removes duplicate videos', () => {
 
 test('sanitizes stored chord maps and produces a library summary', () => {
   const charts = sanitizeSongCharts({
-    dQw4w9WgXcQ: { videoId: 'dQw4w9WgXcQ', title: 'Song', artist: 'Artist', bpm: 120, beatsPerChord: 4, raw: 'C | G | Am | F' },
+    dQw4w9WgXcQ: { videoId: 'dQw4w9WgXcQ', title: 'Song', artist: 'Artist', bpm: 120, beatsPerChord: 4, raw: 'C | G | Am | F', sourceUrl: 'javascript:alert(1)' },
     invalid: { videoId: 'bad', raw: 'C' },
   });
   assert.equal(Object.keys(charts).length, 1);
   assert.equal(charts.dQw4w9WgXcQ.events.length, 4);
+  assert.equal(charts.dQw4w9WgXcQ.sourceUrl, '');
   const tracks = sanitizePlaylistTracks([{ videoId: 'dQw4w9WgXcQ', index: 0, artist: 'Artist', duration: 200 }, { videoId: '9bZkp7q19f0', index: 1, artist: 'Artist', duration: 100 }]);
   assert.deepEqual(librarySummary(tracks, charts), { trackCount: 2, charted: 1, totalDuration: 300, topArtists: [{ name: 'Artist', count: 2 }] });
+});
+
+test('imports chord maps from an exported array as well as an object', () => {
+  const charts = sanitizeSongCharts([{ videoId: 'dQw4w9WgXcQ', raw: '0:00 C\n0:10 G', sourceUrl: 'https://chordify.net/chords/example' }]);
+  assert.equal(Object.keys(charts).length, 1);
+  assert.equal(charts.dQw4w9WgXcQ.events.length, 2);
+  assert.equal(charts.dQw4w9WgXcQ.sourceUrl, 'https://chordify.net/chords/example');
 });
