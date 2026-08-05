@@ -13,6 +13,7 @@ on:
       - scripts/index-chords.py
       - scripts/index-composition-chords.py
       - scripts/lrclib_lyrics.py
+      - scripts/finalize-composition-stats.py
       - src/data/playlist-catalog.json
       - src/app-parts/10-chord-catalog.js
       - src/app-parts/11-composition-matches.js
@@ -103,6 +104,12 @@ jobs:
             --report src/data/chord-match-report.json \
             --reuse-metadata-cache
 
+      - name: Finalize accepted-match statistics
+        run: |
+          python scripts/finalize-composition-stats.py \
+            --catalog src/data/chord-catalog.json \
+            --report src/data/chord-match-report.json
+
       - name: Enforce increased coverage
         run: |
           python - <<'PY'
@@ -118,7 +125,11 @@ jobs:
         run: |
           npm test
           npm run check
-          python -m py_compile scripts/index-chords.py scripts/index-composition-chords.py scripts/lrclib_lyrics.py
+          python -m py_compile \
+            scripts/index-chords.py \
+            scripts/index-composition-chords.py \
+            scripts/lrclib_lyrics.py \
+            scripts/finalize-composition-stats.py
 
       - name: Commit refreshed chord catalog
         id: commit
