@@ -1,27 +1,39 @@
 #!/usr/bin/env python3
 """Run Fretline's chord matcher in composition-first mode.
 
-The base matcher remains conservative. This policy accepts covers, remixes,
-live, acoustic, remastered, slowed, sped-up, and similar recordings when the
-underlying normalized song title is the same or very close. Artist and duration
-remain useful ranking signals, but version differences no longer veto a match.
-Short, generic titles still need corroborating artist or duration evidence.
+Alternate versions by the same artist are accepted from metadata. Cross-artist
+covers are checked against transient LRCLIB lyric fingerprints when available.
+No lyric text is written to the generated repository data.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 BASE_SCRIPT = Path(__file__).with_name("index-chords.py")
-SPEC = importlib.util.spec_from_file_location("fretline_base_chord_indexer", BASE_SCRIPT)
-if SPEC is None or SPEC.loader is None:
-    raise RuntimeError(f"Could not load {BASE_SCRIPT}")
-BASE = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = BASE
-SPEC.loader.exec_module(BASE)
+LYRICS_SCRIPT = Path(__file__).with_name("lrclib_lyrics.py")
+
+
+def load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+BASE = load_module("fretline_base_chord_indexer", BASE_SCRIPT)
+LYRICS = load_module("fretline_lrclib_lyrics", LYRICS_SCRIPT)
+VERIFIER = LYRICS.LRCLIBVerifier()
+VERIFICATIONS: dict[tuple[str, str], Any] = {}
+POLICY_STATS: Counter[str] = Counter()
 
 
 def _title_metrics(left: str, right: str) -> tuple[float, float, float]:
@@ -105,8 +117,6 @@ def composition_score_candidate(track: dict[str, Any], candidate: Any, index: in
     if exact_artist:
         total += 4.0
 
-    # Version tags are recorded in provenance but deliberately do not penalize
-    # the score: the user prefers the same composition over the exact mix.
     return BASE.MatchScore(
         candidate_index=index,
         total=total,
@@ -128,43 +138,66 @@ def _very_distinctive_title(title_base: str) -> bool:
     return len(tokens) >= 3 or len(title_base.replace(" ", "")) >= 16
 
 
+def verification_for(track: dict[str, Any], candidate: Any):
+    key = (track.get("videoId", ""), candidate.spotify_id)
+    if key not in VERIFICATIONS:
+        VERIFICATIONS[key] = VERIFIER.verify(track, candidate)
+    return VERIFICATIONS[key]
+
+
 def composition_classify_match(track: dict[str, Any], best: Any, second: Any | None, candidate: Any) -> str | None:
     margin = best.total - (second.total if second else 0.0)
     exact_title = track["title_base"] == candidate.title_base
-    exact_artist = bool(track["artist_norm"]) and track["artist_norm"] == candidate.artist_norm
+    same_artist = best.artist >= 88
     distinctive = _distinctive_title(track["title_base"])
     very_distinctive = _very_distinctive_title(track["title_base"])
     duration_difference = best.duration_diff
 
-    # Exact normalized titles are the strongest proxy for shared lyrics. Covers
-    # and alternate versions may have different artists and very different run
-    # times, so neither is a veto for a distinctive title.
-    if exact_title:
-        if exact_artist or best.artist >= 88:
+    # Same-artist versions do not need lyric verification. Remixes, live takes,
+    # acoustic versions, remasters, and extended edits share the composition.
+    if same_artist:
+        POLICY_STATS["sameArtistAccepted"] += 1
+        if exact_title or best.title >= 97:
             return "high"
-        if very_distinctive:
+        if best.title >= 92 and margin >= 1.5:
             return "medium"
-        if distinctive and (best.artist >= 20 or duration_difference is None or duration_difference <= 150):
-            return "medium"
-        if best.artist >= 82 and (duration_difference is None or duration_difference <= 90):
-            return "low"
-        if best.artist >= 45 and duration_difference is not None and duration_difference <= 12 and margin >= 3.0:
+        if best.title >= 88 and margin >= 4.0:
             return "low"
         return None
 
-    # Near-title matches still need stronger artist evidence or a clearly
-    # distinctive title. This catches punctuation, transliteration, subtitles,
-    # and minor metadata differences without reviving token-subset false hits.
-    if best.title >= 97 and best.artist >= 78:
-        return "high"
-    if best.title >= 96 and very_distinctive and best.artist >= 20 and margin >= 2.0:
-        return "medium"
-    if best.title >= 93 and best.artist >= 82 and margin >= 2.0:
-        return "medium"
-    if best.title >= 91 and best.artist >= 65 and margin >= 5.0:
-        return "low"
-    if best.title >= 88 and best.artist >= 92 and margin >= 4.0:
-        return "low"
+    # Do not call a public lyrics service for weak metadata candidates.
+    plausible = (
+        exact_title
+        or (best.title >= 96 and very_distinctive)
+        or (best.title >= 93 and best.artist >= 55)
+        or (best.title >= 90 and best.artist >= 82)
+    )
+    if not plausible:
+        return None
+
+    verification = verification_for(track, candidate)
+    POLICY_STATS[f"lyrics_{verification.status}"] += 1
+    if verification.status == "verified":
+        return "medium" if exact_title or best.title >= 96 else "low"
+    if verification.status == "conflict":
+        POLICY_STATS["lyricsConflictRejected"] += 1
+        return None
+
+    # When lyrics are unavailable, retain only narrow fallbacks. Missing or
+    # generic playlist artist metadata is common for Topic/Release uploads.
+    target_artist_reliable = LYRICS.reliable_artist(track.get("artist"))
+    if not target_artist_reliable and exact_title and distinctive:
+        if duration_difference is None or duration_difference <= 35:
+            POLICY_STATS["unverifiedFallbackAccepted"] += 1
+            return "medium"
+    if verification.status == "uncertain" and exact_title and very_distinctive:
+        if duration_difference is not None and duration_difference <= 30 and margin >= 2.0:
+            POLICY_STATS["uncertainFallbackAccepted"] += 1
+            return "low"
+    if verification.status == "unavailable" and exact_title and very_distinctive:
+        if duration_difference is not None and duration_difference <= 15 and margin >= 4.0:
+            POLICY_STATS["unverifiedFallbackAccepted"] += 1
+            return "low"
     return None
 
 
@@ -181,13 +214,16 @@ def composition_build_chart(candidate: Any, track: dict[str, Any], confidence: s
     target_tags = set(track["version_tags"]) & BASE.SIGNIFICANT_VERSION_TAGS
     candidate_tags = set(candidate.version_tags) & BASE.SIGNIFICANT_VERSION_TAGS
     different_version = target_tags != candidate_tags
+    verification = VERIFICATIONS.get((track.get("videoId", ""), candidate.spotify_id))
 
-    if exact_title and not same_artist:
-        match_mode = "same-composition-cover"
-    elif different_version:
+    if same_artist and different_version:
         match_mode = "same-composition-version"
-    elif exact_title:
+    elif same_artist and exact_title:
         match_mode = "same-title-recording"
+    elif verification and verification.status == "verified":
+        match_mode = "same-composition-cover"
+    elif not same_artist and exact_title:
+        match_mode = "same-title-unverified"
     else:
         match_mode = "fuzzy-composition"
 
@@ -197,8 +233,48 @@ def composition_build_chart(candidate: Any, track: dict[str, Any], confidence: s
     chart["provenance"]["versionDifferenceAccepted"] = different_version
     chart["provenance"]["playlistVersionTags"] = sorted(target_tags)
     chart["provenance"]["matchedVersionTags"] = sorted(candidate_tags)
-    chart["provenance"]["policy"] = "composition-first-v1"
+    chart["provenance"]["policy"] = "composition-first-lyrics-v2"
+    if verification:
+        chart["provenance"].update(verification.provenance())
+    else:
+        chart["provenance"].update({
+            "lyricsVerification": "not-required",
+            "lyricsSimilarity": None,
+            "lrclibTargetId": None,
+            "lrclibCandidateId": None,
+            "lyricsVerificationReason": "artist-metadata-equivalent",
+        })
     return chart, approximate_count
+
+
+def argument_value(name: str, default: str) -> Path:
+    try:
+        return Path(sys.argv[sys.argv.index(name) + 1])
+    except (ValueError, IndexError):
+        return Path(default)
+
+
+def patch_generated_stats() -> None:
+    output_path = argument_value("--output", "src/data/chord-catalog.json")
+    report_path = argument_value("--report", "src/data/chord-match-report.json")
+    catalog = json.loads(output_path.read_text(encoding="utf-8"))
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    additions = {
+        "matchingPolicy": "composition-first-lyrics-v2",
+        "sameArtistAccepted": POLICY_STATS["sameArtistAccepted"],
+        "lyricsVerified": POLICY_STATS["lyrics_verified"],
+        "lyricsConflictsRejected": POLICY_STATS["lyricsConflictRejected"],
+        "lyricsUnavailable": POLICY_STATS["lyrics_unavailable"],
+        "lyricsUncertain": POLICY_STATS["lyrics_uncertain"],
+        "unverifiedFallbackAccepted": POLICY_STATS["unverifiedFallbackAccepted"],
+        "uncertainFallbackAccepted": POLICY_STATS["uncertainFallbackAccepted"],
+    }
+    catalog["matchingPolicy"] = "composition-first-lyrics-v2"
+    catalog["stats"].update(additions)
+    report["matchingPolicy"] = "composition-first-lyrics-v2"
+    report["stats"].update(additions)
+    output_path.write_text(json.dumps(catalog, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 BASE.score_candidate = composition_score_candidate
@@ -206,4 +282,6 @@ BASE.classify_match = composition_classify_match
 BASE.build_chart = composition_build_chart
 
 if __name__ == "__main__":
-    raise SystemExit(BASE.main())
+    result = BASE.main()
+    patch_generated_stats()
+    raise SystemExit(result)
