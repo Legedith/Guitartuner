@@ -139,7 +139,12 @@ def similarity_status(metrics: dict[str, float | int]) -> str:
         or line_containment >= 0.62
     ):
         return "verified"
-    if containment <= 0.16 and sequence <= 0.36 and line_containment <= 0.18:
+    if (
+        containment <= 0.12
+        and jaccard <= 0.06
+        and line_containment <= 0.12
+        and sequence <= 0.56
+    ):
         return "conflict"
     return "uncertain"
 
