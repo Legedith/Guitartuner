@@ -23,7 +23,7 @@ test('bundled chord catalog has the expected generated coverage', () => {
   );
   assert.ok(chordCatalog.stats.highConfidence >= 450);
   assert.ok(chordCatalog.stats.lowConfidence <= 25);
-  assert.equal(chordCatalog.stats.unmatched, chordCatalog.stats.playlistEntries - charts.length);
+  assert.equal(chordCatalog.stats.unmatched, chordCatalog.stats.uniqueVideos - charts.length);
   assert.equal(charts.length, chordCatalog.stats.chartedUniqueVideos);
   assert.equal(
     chordCatalog.stats.highConfidence + chordCatalog.stats.mediumConfidence + chordCatalog.stats.lowConfidence,
