@@ -30,6 +30,13 @@ export function extractYouTubeVideoId(value) {
   } catch (_) { return null; }
 }
 
+export function sanitizeExternalUrl(value) {
+  try {
+    const url = new URL(String(value ?? '').trim());
+    return ['https:', 'http:'].includes(url.protocol) ? url.href.slice(0, 500) : '';
+  } catch (_) { return ''; }
+}
+
 export function youtubeVideoUrl(videoId) { return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`; }
 
 export function parseTimestamp(value) {
@@ -150,9 +157,10 @@ export function sanitizePlaylistTracks(value) {
 }
 
 export function sanitizeSongCharts(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  if (!value || typeof value !== 'object') return {};
+  const entries = Array.isArray(value) ? value.map((item, index) => [item?.videoId ?? String(index), item]) : Object.entries(value);
   const output = {};
-  for (const [key, item] of Object.entries(value)) {
+  for (const [key, item] of entries) {
     const videoId = extractYouTubeVideoId(item?.videoId ?? key);
     if (!videoId) continue;
     const raw = typeof item.raw === 'string' ? item.raw.slice(0, 24000) : '';
@@ -166,7 +174,7 @@ export function sanitizeSongCharts(value) {
       bpm,
       beatsPerChord,
       raw,
-      sourceUrl: typeof item.sourceUrl === 'string' ? item.sourceUrl.trim().slice(0, 500) : '',
+      sourceUrl: sanitizeExternalUrl(item.sourceUrl),
       events: parsedEvents,
       updatedAt: Math.max(0, finiteNumber(item.updatedAt, Date.now())),
     };
