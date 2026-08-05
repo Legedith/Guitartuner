@@ -7,9 +7,11 @@ function setWaitingDisplay() {
   dom.tunerCard.dataset.state = listening ? 'listening' : 'idle'; dom.listenStatus.textContent = listening ? 'Listening' : 'Microphone is off'; setNeedle(0);
 }
 function updateCurrentTuning({ resetProgress = true } = {}) {
-  stopReferenceTone(); ensureCurrentTuning(); targets = buildTargetStrings(currentTuning, settings.referenceA, settings.accidentalMode);
+  stopReferenceTone(); stopChordSound?.(); ensureCurrentTuning(); targets = buildTargetStrings(currentTuning, settings.referenceA, settings.accidentalMode);
   selectedTargetIndex = clamp(selectedTargetIndex, 0, Math.max(0, targets.length - 1)); if (resetProgress) tunedStrings = new Set();
   resetPitchTracking(); updateInstrumentControls(); updateTuningSummary(); updateModeControl(); renderStrings(); setWaitingDisplay(); saveSettings();
+  if (dom.chordDialog.open) renderChordLibrary();
+  if (!dom.playAlongView.hidden) renderPlayAlongAtCurrentTime?.();
 }
 function selectString(index, switchToManual = false) {
   if (!targets[index]) return; selectedTargetIndex = index; if (switchToManual) settings.mode = 'manual';
@@ -17,6 +19,6 @@ function selectString(index, switchToManual = false) {
 }
 function setInstrument(instrument) {
   if (!Object.hasOwn(INSTRUMENTS, instrument) || instrument === settings.instrument) return;
-  stopReferenceTone(); settings.instrument = instrument; selectedTargetIndex = 0; tunedStrings = new Set(); updateCurrentTuning();
+  stopReferenceTone(); stopChordSound?.(); settings.instrument = instrument; selectedTargetIndex = 0; tunedStrings = new Set(); updateCurrentTuning();
 }
 function setMode(mode) { settings.mode = mode === 'manual' ? 'manual' : 'auto'; resetPitchTracking(); updateModeControl(); setWaitingDisplay(); saveSettings(); }
