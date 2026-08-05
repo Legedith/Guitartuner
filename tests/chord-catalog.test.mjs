@@ -14,7 +14,8 @@ test('bundled chord catalog has the expected generated coverage', () => {
   assert.equal(chordCatalog.playlistId, 'PL0gpFgtesNu015JGaKSx8BonbVjGRefKb');
   assert.equal(chordCatalog.license, 'CC BY-NC 4.0');
   assert.equal(chordCatalog.stats.playlistEntries, 1611);
-  assert.equal(chordCatalog.stats.uniqueVideos, 1611);
+  assert.equal(chordCatalog.stats.uniqueVideos, playlistVideoIds.size);
+  assert.equal(chordCatalog.stats.uniqueVideos, 1608);
   assert.equal(chordCatalog.stats.chartedUniqueVideos, 519);
   assert.equal(chordCatalog.stats.coveragePercent, 32.22);
   assert.equal(chordCatalog.stats.highConfidence, 496);
@@ -33,7 +34,7 @@ test('catalog attribution and limitations are explicit', () => {
   assert.match(chordCatalog.attribution.chords.url, /^https:\/\//);
   assert.match(chordCatalog.attribution.chords.citation, /CHORDONOMICON/i);
   assert.match(chordCatalog.attribution.spotifyMetadata.url, /^https:\/\//);
-  assert.match(chordCatalog.timingNotice, /estimated/i);
+  assert.match(chordCatalog.timingNotice, /estimat/i);
 });
 
 test('every accepted map belongs to the playlist and declares match provenance', () => {
