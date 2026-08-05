@@ -21,6 +21,7 @@ function youtubeState() { try { return youtubePlayer?.getPlayerState?.() ?? -1; 
 function currentPlayerTime() { try { return Math.max(0, youtubePlayer?.getCurrentTime?.() || 0); } catch (_) { return 0; } }
 function currentPlayerDuration() { try { return Math.max(0, youtubePlayer?.getDuration?.() || 0); } catch (_) { return 0; } }
 function videoUrlForSong(song = selectedSong) { return song?.videoId ? youtubeVideoUrl(song.videoId) : '#'; }
+function delay(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }
 
 function loadYouTubeIframeApi() {
   if (globalThis.YT?.Player) return Promise.resolve(globalThis.YT);
@@ -31,8 +32,21 @@ function loadYouTubeIframeApi() {
     const existing = document.querySelector('script[data-fretline-youtube-api]');
     if (existing) { existing.addEventListener('error', () => reject(new Error('YouTube player could not be loaded.')), { once: true }); return; }
     const script = document.createElement('script'); script.src = 'https://www.youtube.com/iframe_api'; script.async = true; script.dataset.fretlineYoutubeApi = 'true'; script.onerror = () => reject(new Error('YouTube player could not be loaded.')); document.head.append(script);
-  });
+  }).catch((error) => { youtubeApiPromise = null; throw error; });
   return youtubeApiPromise;
+}
+
+function waitForYouTubePlayerReady(timeout = 12000) {
+  if (youtubePlayerReady) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const started = performance.now();
+    const poll = () => {
+      if (youtubePlayerReady) { resolve(); return; }
+      if (performance.now() - started >= timeout) { reject(new Error('YouTube player took too long to respond.')); return; }
+      setTimeout(poll, 100);
+    };
+    poll();
+  });
 }
 
 function youtubeErrorMessage(code) {
@@ -129,7 +143,7 @@ async function loadPlaylist(event) {
   if (!playlistId) { showToast('Paste a valid YouTube or YouTube Music playlist link.'); return; }
   settings.playlistUrl = dom.playlistUrl.value.trim(); settings.playlistTracks = loadedPlaylistId === playlistId ? settings.playlistTracks : []; saveSettings(); renderSongList(); renderLibrarySummary();
   dom.loadPlaylistButton.disabled = true; dom.libraryStatus.textContent = 'Loading YouTube playlist…';
-  try { await ensureYouTubePlayer(playlistId); dom.libraryStatus.textContent = 'Playlist connected. Reading its song list…'; }
+  try { await ensureYouTubePlayer(playlistId); await waitForYouTubePlayerReady(); playlistSyncAttempts = 0; syncPlaylistFromPlayer(); dom.libraryStatus.textContent = 'Playlist connected. Reading its song list…'; }
   catch (error) { dom.libraryStatus.textContent = error.message; showToast(error.message, 4200); }
   finally { dom.loadPlaylistButton.disabled = false; }
 }
@@ -141,7 +155,8 @@ function renderLibrarySummary() {
   const stats = [
     [String(summary.trackCount), 'songs'],
     [String(summary.charted), 'with chord maps'],
-    [summary.totalDuration ? formatTime(summary.totalDuration, true) : (summary.topArtists[0]?.name || 'Personal'), summary.totalDuration ? 'total play time' : 'local practice library'],
+    [summary.totalDuration ? formatTime(summary.totalDuration, true) : '—', 'total play time'],
+    [summary.topArtists[0]?.name || '—', summary.topArtists[0] ? `${summary.topArtists[0].count} songs · top artist` : 'artist mix appears after titles are read'],
   ];
   for (const [value, label] of stats) { const item = document.createElement('div'); item.className = 'summary-stat'; const strong = document.createElement('strong'); strong.textContent = value; const span = document.createElement('span'); span.textContent = label; item.append(strong, span); dom.librarySummary.append(item); }
 }
@@ -171,12 +186,19 @@ function openSongLibrary() {
 
 function songByVideoId(videoId) { return settings.playlistTracks.find((track) => track.videoId === videoId) ?? null; }
 
-function selectSong(videoId, play = true) {
+async function selectSong(videoId, play = true) {
   const track = songByVideoId(videoId); if (!track) return;
   selectedSong = track; playAlongTranspose = 0; activePlayAlongKey = ''; loopStart = null; loopEnd = null; loopEnabled = false; updateLoopControls(); updateTransposeControl();
   dom.libraryListView.hidden = true; dom.playAlongView.hidden = false; dom.playAlongTitle.textContent = trackDisplayTitle(track); dom.playAlongArtist.textContent = trackDisplayArtist(track); dom.openYouTubeButton.href = youtubeVideoUrl(track.videoId); dom.playAlongDuration.textContent = formatTime(track.duration); dom.playAlongSeek.value = '0';
-  if (youtubePlayerReady && youtubePlayer) { try { youtubePlayer.playVideoAt(track.index); if (!play) youtubePlayer.pauseVideo(); } catch (_) {} }
   renderPlayAlongAtCurrentTime(true); startPlayAlongTicker();
+  try {
+    if (!youtubePlayerReady) {
+      const playlistId = extractYouTubePlaylistId(settings.playlistUrl);
+      if (!playlistId) throw new Error('Load a valid playlist before playing this song.');
+      dom.libraryStatus.textContent = 'Connecting YouTube playback…'; await ensureYouTubePlayer(playlistId); await waitForYouTubePlayerReady();
+    }
+    youtubePlayer.playVideoAt(track.index); if (!play) youtubePlayer.pauseVideo();
+  } catch (error) { dom.libraryStatus.textContent = error.message; showToast(error.message, 3600); }
 }
 
 function displayedChartEvents() {
@@ -189,7 +211,7 @@ function renderUpcomingChords(events, activeIndex, time) {
   const start = Math.max(0, activeIndex); const end = Math.min(events.length, start + 7);
   for (let index = start; index < end; index += 1) {
     const event = events[index]; const button = document.createElement('button'); button.type = 'button'; button.className = 'upcoming-chord'; button.dataset.time = String(event.time); button.setAttribute('aria-current', String(index === activeIndex));
-    const chord = document.createElement('strong'); chord.textContent = event.chord; const timing = document.createElement('span'); timing.textContent = index === activeIndex ? `${Math.max(0, event.time - time).toFixed(0)}s now` : formatTime(event.time); button.append(chord, timing); dom.upcomingChords.append(button);
+    const chord = document.createElement('strong'); chord.textContent = event.chord; const timing = document.createElement('span'); timing.textContent = index === activeIndex ? 'Now' : formatTime(event.time); button.append(chord, timing); dom.upcomingChords.append(button);
   }
 }
 
@@ -250,26 +272,27 @@ function openSongChartEditor() {
 }
 
 function markChordAtCurrentTime() {
-  const symbol = dom.chartChordSymbol.value.trim(); if (!parseChordSymbol(symbol)) { showToast('Enter a supported chord such as C, Am, G7, or Fmaj7.'); return; }
+  const symbol = dom.chartChordSymbol.value.trim(); if (!parseChordSymbol(symbol)) { showToast('Enter a supported chord such as C, Am, G7, Cadd9, or Fmaj7.'); return; }
   const time = currentPlayerTime(); const line = `${formatTime(time, time >= 3600)} ${symbol}`; const existing = dom.songChartText.value.trim(); dom.songChartText.value = existing ? `${existing}\n${line}` : line; dom.songChartText.focus(); dom.songChartText.setSelectionRange(dom.songChartText.value.length, dom.songChartText.value.length);
 }
 
 function saveSongChart(event) {
   event.preventDefault(); if (!editingSongVideoId) return;
-  const bpm = clamp(Number(dom.songChartBpm.value) || 90, 20, 300); const beatsPerChord = clamp(Number(dom.beatsPerChord.value) || 4, .25, 32); const raw = dom.songChartText.value.trim(); const events = parseChordChart(raw, { bpm, beatsPerChord });
+  const bpm = clamp(Number(dom.songChartBpm.value) || 90, 20, 300); const beatsPerChord = clamp(Number(dom.beatsPerChord.value) || 4, .25, 32); const raw = dom.songChartText.value.trim(); const events = parseChordChart(raw, { bpm, beatsPerChord }); const sourceInput = dom.songChartSource.value.trim(); const sourceUrl = sanitizeExternalUrl(sourceInput);
   if (raw && !events.length) { showToast('No supported chord changes were found. Check the examples below the editor.'); return; }
-  settings.songCharts[editingSongVideoId] = { videoId: editingSongVideoId, title: dom.songChartTitle.value.trim(), artist: dom.songChartArtist.value.trim(), bpm, beatsPerChord, raw, sourceUrl: dom.songChartSource.value.trim(), events, updatedAt: Date.now() };
+  if (sourceInput && !sourceUrl) { showToast('The chord source must be an http or https link.'); return; }
+  settings.songCharts[editingSongVideoId] = { videoId: editingSongVideoId, title: dom.songChartTitle.value.trim(), artist: dom.songChartArtist.value.trim(), bpm, beatsPerChord, raw, sourceUrl, events, updatedAt: Date.now() };
   const track = songByVideoId(editingSongVideoId); if (track) { if (settings.songCharts[editingSongVideoId].title) track.title = settings.songCharts[editingSongVideoId].title; if (settings.songCharts[editingSongVideoId].artist) track.artist = settings.songCharts[editingSongVideoId].artist; }
   saveSettings(); dom.songChartDialog.close(); activePlayAlongKey = ''; renderLibrarySummary(); renderSongList(); renderPlayAlongAtCurrentTime(true); showToast(events.length ? `Saved ${events.length} chord changes` : 'Chord map cleared');
 }
 
 async function findSongChords() {
-  if (!selectedSong) return; const chart = settings.songCharts[selectedSong.videoId];
-  if (chart?.sourceUrl) { window.open(chart.sourceUrl, '_blank', 'noopener'); return; }
-  const url = videoUrlForSong();
+  if (!selectedSong) return; const chart = settings.songCharts[selectedSong.videoId]; const sourceUrl = sanitizeExternalUrl(chart?.sourceUrl);
+  if (sourceUrl) { window.open(sourceUrl, '_blank', 'noopener'); return; }
+  const chordifyWindow = window.open('https://chordify.net/', '_blank', 'noopener'); const url = videoUrlForSong();
   try { await navigator.clipboard.writeText(url); showToast('YouTube link copied. Paste it into Chordify, then save the licensed source or enter your chord map here.', 5200); }
-  catch (_) { showToast('Open Chordify and paste this song’s YouTube link.', 3600); }
-  window.open('https://chordify.net/', '_blank', 'noopener');
+  catch (_) { showToast('Chordify opened. Paste this song’s YouTube link there.', 3600); }
+  if (!chordifyWindow) showToast('Your browser blocked the new tab. Open Chordify and paste this song’s YouTube link.', 4400);
 }
 
 function exportSongCharts() {
@@ -302,24 +325,31 @@ function waitForTrackMetadata(videoId, timeout = 5200) {
 
 async function indexPlaylistTitles() {
   if (!youtubePlayerReady || !settings.playlistTracks.length) return;
-  if (libraryIndexing) { libraryIndexToken += 1; libraryIndexing = false; dom.indexPlaylistButton.textContent = 'Read titles'; dom.libraryStatus.textContent = 'Title reading stopped.'; return; }
+  if (libraryIndexing) { libraryIndexToken += 1; libraryIndexing = false; dom.indexPlaylistButton.textContent = 'Read titles'; dom.libraryStatus.textContent = 'Stopping title reading…'; return; }
   libraryIndexing = true; const token = ++libraryIndexToken; dom.indexPlaylistButton.textContent = 'Stop'; const previousIndex = Math.max(0, youtubePlayer.getPlaylistIndex?.() ?? 0); const previousTime = currentPlayerTime(); const wasPlaying = globalThis.YT && youtubeState() === globalThis.YT.PlayerState.PLAYING; let wasMuted = false;
-  try { wasMuted = youtubePlayer.isMuted?.() ?? false; youtubePlayer.mute(); }
-  catch (_) {}
-  for (let index = 0; index < settings.playlistTracks.length; index += 1) {
-    if (!libraryIndexing || token !== libraryIndexToken) break;
-    const track = settings.playlistTracks[index]; if (track.title && track.duration) continue;
-    dom.libraryStatus.textContent = `Reading titles ${index + 1} of ${settings.playlistTracks.length}…`;
-    try { youtubePlayer.playVideoAt(index); youtubePlayer.pauseVideo(); } catch (_) {}
-    await waitForTrackMetadata(track.videoId);
-  }
-  if (token === libraryIndexToken) {
-    try { youtubePlayer.playVideoAt(previousIndex); youtubePlayer.seekTo(previousTime, true); if (!wasPlaying) youtubePlayer.pauseVideo(); if (!wasMuted) youtubePlayer.unMute(); } catch (_) {}
-    libraryIndexing = false; dom.indexPlaylistButton.textContent = 'Read titles'; dom.libraryStatus.textContent = 'Playlist titles saved in this browser.'; renderSongList(); renderLibrarySummary();
+  try {
+    wasMuted = youtubePlayer.isMuted?.() ?? false; youtubePlayer.mute();
+    for (let index = 0; index < settings.playlistTracks.length; index += 1) {
+      if (!libraryIndexing || token !== libraryIndexToken) break;
+      const track = settings.playlistTracks[index]; if (track.title && track.duration) continue;
+      dom.libraryStatus.textContent = `Reading titles ${index + 1} of ${settings.playlistTracks.length}…`;
+      youtubePlayer.playVideoAt(index); await delay(220); youtubePlayer.pauseVideo(); await waitForTrackMetadata(track.videoId);
+    }
+  } catch (_) {
+    dom.libraryStatus.textContent = 'Some playlist titles could not be read.';
+  } finally {
+    try {
+      youtubePlayer.playVideoAt(previousIndex); await delay(120); youtubePlayer.seekTo(previousTime, true);
+      if (!wasMuted) youtubePlayer.unMute(); else youtubePlayer.mute();
+      if (wasPlaying && dom.libraryDialog.open) youtubePlayer.playVideo(); else youtubePlayer.pauseVideo();
+    } catch (_) {}
+    const completed = token === libraryIndexToken && libraryIndexing;
+    if (token === libraryIndexToken) libraryIndexing = false;
+    dom.indexPlaylistButton.textContent = 'Read titles'; dom.libraryStatus.textContent = completed ? 'Playlist titles saved in this browser.' : 'Title reading stopped.'; renderSongList(); renderLibrarySummary();
   }
 }
 
-function backToLibrary() { dom.playAlongView.hidden = true; dom.libraryListView.hidden = false; selectedSong = null; activePlayAlongKey = ''; stopChordSound(); renderSongList(); }
+function backToLibrary() { try { youtubePlayer?.pauseVideo?.(); } catch (_) {} dom.playAlongView.hidden = true; dom.libraryListView.hidden = false; selectedSong = null; activePlayAlongKey = ''; stopChordSound(); renderSongList(); }
 
 function initializeSongLibrary() {
   dom.playlistUrl.value = settings.playlistUrl || DEFAULT_PLAYLIST_URL; renderLibrarySummary(); renderSongList(); updateTransposeControl(); updateLoopControls(); startPlayAlongTicker();
