@@ -9,6 +9,7 @@ on:
       - .github/workflows/index-chords.yml
       - scripts/index-chords.py
       - src/data/playlist-catalog.json
+      - tests/chords.test.mjs
   workflow_dispatch:
   schedule:
     - cron: '43 5 2 * *'
@@ -46,6 +47,7 @@ jobs:
         with:
           path: /tmp/fretline-chord-sources
           key: fretline-chord-sources-v1
+          save-always: true
 
       - name: Install catalog tools
         run: |
