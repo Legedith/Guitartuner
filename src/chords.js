@@ -7,9 +7,15 @@ export const CHORD_QUALITIES = Object.freeze([
   Object.freeze({ id: '7', label: 'Dominant 7', symbol: '7', intervals: Object.freeze([0, 4, 7, 10]), essential: Object.freeze([0, 4, 10]) }),
   Object.freeze({ id: 'maj7', label: 'Major 7', symbol: 'maj7', intervals: Object.freeze([0, 4, 7, 11]), essential: Object.freeze([0, 4, 11]) }),
   Object.freeze({ id: 'm7', label: 'Minor 7', symbol: 'm7', intervals: Object.freeze([0, 3, 7, 10]), essential: Object.freeze([0, 3, 10]) }),
+  Object.freeze({ id: '6', label: 'Major 6', symbol: '6', intervals: Object.freeze([0, 4, 7, 9]), essential: Object.freeze([0, 4, 9]) }),
+  Object.freeze({ id: 'm6', label: 'Minor 6', symbol: 'm6', intervals: Object.freeze([0, 3, 7, 9]), essential: Object.freeze([0, 3, 9]) }),
+  Object.freeze({ id: 'add9', label: 'Add 9', symbol: 'add9', intervals: Object.freeze([0, 4, 7, 14]), essential: Object.freeze([0, 4, 14]) }),
+  Object.freeze({ id: '9', label: 'Dominant 9', symbol: '9', intervals: Object.freeze([0, 4, 7, 10, 14]), essential: Object.freeze([0, 4, 10, 14]) }),
+  Object.freeze({ id: 'm9', label: 'Minor 9', symbol: 'm9', intervals: Object.freeze([0, 3, 7, 10, 14]), essential: Object.freeze([0, 3, 10, 14]) }),
   Object.freeze({ id: 'sus2', label: 'Suspended 2', symbol: 'sus2', intervals: Object.freeze([0, 2, 7]), essential: Object.freeze([0, 2, 7]) }),
   Object.freeze({ id: 'sus4', label: 'Suspended 4', symbol: 'sus4', intervals: Object.freeze([0, 5, 7]), essential: Object.freeze([0, 5, 7]) }),
   Object.freeze({ id: 'dim', label: 'Diminished', symbol: 'dim', intervals: Object.freeze([0, 3, 6]), essential: Object.freeze([0, 3, 6]) }),
+  Object.freeze({ id: 'dim7', label: 'Diminished 7', symbol: 'dim7', intervals: Object.freeze([0, 3, 6, 9]), essential: Object.freeze([0, 3, 6, 9]) }),
   Object.freeze({ id: 'aug', label: 'Augmented', symbol: 'aug', intervals: Object.freeze([0, 4, 8]), essential: Object.freeze([0, 4, 8]) }),
   Object.freeze({ id: '5', label: 'Power chord', symbol: '5', intervals: Object.freeze([0, 7]), essential: Object.freeze([0, 7]) }),
 ]);
@@ -21,9 +27,15 @@ const QUALITY_ALIASES = new Map([
   ['7', '7'], ['dom7', '7'],
   ['maj7', 'maj7'], ['M7', 'maj7'], ['Δ7', 'maj7'], ['major7', 'maj7'],
   ['m7', 'm7'], ['min7', 'm7'], ['minor7', 'm7'], ['-7', 'm7'],
+  ['6', '6'], ['maj6', '6'], ['major6', '6'],
+  ['m6', 'm6'], ['min6', 'm6'], ['minor6', 'm6'],
+  ['add9', 'add9'], ['add2', 'add9'],
+  ['9', '9'], ['dom9', '9'],
+  ['m9', 'm9'], ['min9', 'm9'], ['minor9', 'm9'], ['-9', 'm9'],
   ['sus2', 'sus2'], ['2', 'sus2'],
   ['sus4', 'sus4'], ['sus', 'sus4'], ['4', 'sus4'],
   ['dim', 'dim'], ['°', 'dim'], ['o', 'dim'],
+  ['dim7', 'dim7'], ['°7', 'dim7'], ['o7', 'dim7'],
   ['aug', 'aug'], ['+', 'aug'],
   ['5', '5'], ['power', '5'],
 ]);
@@ -55,7 +67,7 @@ function normalizeQualityToken(value) {
 
 export function parseChordSymbol(value) {
   const source = String(value ?? '').trim();
-  if (!source || source === '~' || /^n\.?c\.?$/i.test(source)) return source ? { rest: true, symbol: '—' } : null;
+  if (!source || source === '~' || source === '—' || /^n\.?c\.?$/i.test(source)) return source ? { rest: true, symbol: '—' } : null;
   const match = source.match(/^([A-Ga-g])([#b♯♭]?)([^/]*)?(?:\/([A-Ga-g])([#b♯♭]?))?$/);
   if (!match) return null;
   const rootText = `${match[1]}${match[2] ?? ''}`;
@@ -83,7 +95,7 @@ export function transposeChordSymbol(value, semitones = 0, accidentalMode = 'sha
 }
 
 export function chordPitchClasses(root, quality = 'major') {
-  return getChordQuality(quality).intervals.map((interval) => mod(root + interval));
+  return [...new Set(getChordQuality(quality).intervals.map((interval) => mod(root + interval)))];
 }
 
 export function voicingNoteMidis(tuningMidi, frets) {
@@ -96,7 +108,7 @@ function voicingCompleteness(root, quality, noteMidis) {
   const present = new Set(noteMidis.filter(Number.isFinite).map((midi) => mod(midi)));
   const essential = definition.essential.map((interval) => mod(root + interval));
   if (!essential.every((pitchClass) => present.has(pitchClass))) return 0;
-  const target = definition.intervals.map((interval) => mod(root + interval));
+  const target = [...new Set(definition.intervals.map((interval) => mod(root + interval)))];
   return target.filter((pitchClass) => present.has(pitchClass)).length / target.length;
 }
 
@@ -127,7 +139,7 @@ function describePosition(frets) {
   return `Position ${Math.min(...positive)}`;
 }
 
-function scoreVoicing({ frets, noteMidis, root, quality, completeness }) {
+function scoreVoicing({ frets, noteMidis, root, quality, completeness, requestedBass }) {
   const positive = frets.filter((fret) => fret > 0);
   const sounded = noteMidis.filter(Number.isFinite);
   const maxFret = positive.length ? Math.max(...positive) : 0;
@@ -136,10 +148,12 @@ function scoreVoicing({ frets, noteMidis, root, quality, completeness }) {
   const muted = frets.filter((fret) => fret < 0).length;
   const opens = frets.filter((fret) => fret === 0).length;
   const bassMidi = sounded.length ? Math.min(...sounded) : Number.NaN;
-  const rootInBass = Number.isFinite(bassMidi) && mod(bassMidi) === mod(root);
+  const bassPitchClass = Number.isFinite(bassMidi) ? mod(bassMidi) : Number.NaN;
+  const preferredBass = Number.isFinite(requestedBass) ? mod(requestedBass) : mod(root);
+  const preferredBassPresent = bassPitchClass === preferredBass;
   const positionBonus = maxFret <= 4 ? 12 : Math.max(0, 7 - minFret) * 0.7;
   const qualityBonus = getChordQuality(quality).intervals.length > 3 ? completeness * 8 : 0;
-  return (completeness * 100) + (rootInBass ? 20 : 0) + (opens * 4) + (sounded.length * 1.7)
+  return (completeness * 100) + (preferredBassPresent ? 22 : 0) + (opens * 4) + (sounded.length * 1.7)
     + positionBonus + qualityBonus - (maxFret * 1.18) - (span * 3.2) - (muted * 1.25) - (internalMuteCount(frets) * 4);
 }
 
@@ -157,7 +171,9 @@ export function generateChordVoicings(tuningMidi, root, quality = 'major', optio
   const maxSpan = Math.max(3, Math.min(5, Number(options.maxSpan) || 4));
   const limit = Math.max(1, Math.min(12, Number(options.limit) || 8));
   const minStrings = Math.max(2, Math.min(tuningMidi.length, Number(options.minStrings) || (tuningMidi.length >= 6 ? 4 : 3)));
+  const requestedBass = Number.isFinite(options.bassPitchClass) ? mod(options.bassPitchClass) : null;
   const targetPitchClasses = new Set(chordPitchClasses(root, quality));
+  if (requestedBass !== null) targetPitchClasses.add(requestedBass);
   const results = new Map();
 
   for (let windowStart = 0; windowStart <= maxFret; windowStart += 1) {
@@ -170,6 +186,9 @@ export function generateChordVoicings(tuningMidi, root, quality = 'major', optio
       if (stringIndex === tuningMidi.length) {
         if (sounded < minStrings) return;
         const noteMidis = voicingNoteMidis(tuningMidi, frets);
+        const soundedMidis = noteMidis.filter(Number.isFinite);
+        const bassMidi = soundedMidis.length ? Math.min(...soundedMidis) : Number.NaN;
+        if (requestedBass !== null && (!Number.isFinite(bassMidi) || mod(bassMidi) !== requestedBass)) return;
         const completeness = voicingCompleteness(root, quality, noteMidis);
         if (!completeness) return;
         const key = frets.join(',');
@@ -183,7 +202,7 @@ export function generateChordVoicings(tuningMidi, root, quality = 'major', optio
           barres,
           baseFret,
           noteMidis,
-          score: scoreVoicing({ frets, noteMidis, root, quality, completeness }),
+          score: scoreVoicing({ frets, noteMidis, root, quality, completeness, requestedBass }),
           completeness,
           position: describePosition(frets),
         });
@@ -218,7 +237,10 @@ export function generateChordVoicings(tuningMidi, root, quality = 'major', optio
   return selected;
 }
 
-export function isChordVoicingValid(tuningMidi, frets, root, quality = 'major') {
+export function isChordVoicingValid(tuningMidi, frets, root, quality = 'major', options = {}) {
   const noteMidis = voicingNoteMidis(tuningMidi, frets);
-  return noteMidis.filter(Number.isFinite).length >= 2 && voicingCompleteness(root, quality, noteMidis) > 0;
+  const sounded = noteMidis.filter(Number.isFinite);
+  if (sounded.length < 2 || !voicingCompleteness(root, quality, noteMidis)) return false;
+  if (Number.isFinite(options.bassPitchClass)) return mod(Math.min(...sounded)) === mod(options.bassPitchClass);
+  return true;
 }
