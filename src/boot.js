@@ -1,10 +1,11 @@
 import * as Chords from './chords.js';
+import * as LibraryView from './library-view.js';
 import * as Pitch from './pitch.js';
 import * as ReferenceStrings from './reference-string.js';
 import * as SongLibrary from './song-library.js';
 import * as Tunings from './tunings.js';
 
-Object.assign(globalThis, Chords, Pitch, ReferenceStrings, SongLibrary, Tunings);
+Object.assign(globalThis, Chords, LibraryView, Pitch, ReferenceStrings, SongLibrary, Tunings);
 
 const applicationParts = [
   './app-parts/01-state.js',
@@ -17,6 +18,7 @@ const applicationParts = [
   './app-parts/09-library.js',
   './app-parts/10-chord-catalog.js',
   './app-parts/11-composition-matches.js',
+  './app-parts/12-minimal-library.js',
   './app-parts/07-events.js',
 ];
 
