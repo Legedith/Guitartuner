@@ -1,5 +1,7 @@
 name: Build composition-first chord catalog
 
+# Covers, remixes, live recordings, acoustic takes, and other versions are
+# accepted when they resolve to the same underlying song composition.
 on:
   push:
     branches:
