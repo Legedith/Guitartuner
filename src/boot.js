@@ -1,7 +1,8 @@
 import * as Pitch from './pitch.js';
+import * as ReferenceStrings from './reference-string.js';
 import * as Tunings from './tunings.js';
 
-Object.assign(globalThis, Pitch, Tunings);
+Object.assign(globalThis, Pitch, ReferenceStrings, Tunings);
 
 const applicationParts = [
   './app-parts/01-state.js',
