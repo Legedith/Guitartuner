@@ -9,8 +9,6 @@ on:
       - .github/workflows/index-chords.yml
       - scripts/index-chords.py
       - src/data/playlist-catalog.json
-      - src/chords.js
-      - src/song-library.js
   workflow_dispatch:
   schedule:
     - cron: '43 5 2 * *'
