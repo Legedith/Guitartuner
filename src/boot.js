@@ -16,6 +16,7 @@ const applicationParts = [
   './app-parts/08-chords.js',
   './app-parts/09-library.js',
   './app-parts/10-chord-catalog.js',
+  './app-parts/11-composition-matches.js',
   './app-parts/07-events.js',
 ];
 

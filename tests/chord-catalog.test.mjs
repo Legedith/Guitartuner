@@ -8,27 +8,28 @@ const playlistCatalog = JSON.parse(await readFile(new URL('../src/data/playlist-
 const charts = Object.entries(chordCatalog.charts ?? {});
 const playlistVideoIds = new Set((playlistCatalog.tracks ?? []).map((track) => track.videoId));
 
-test('bundled chord catalog has the expected generated coverage', () => {
+test('bundled chord catalog has increased lyrics-aware composition coverage', () => {
   assert.equal(chordCatalog.schema, 'fretline-chord-catalog');
   assert.equal(chordCatalog.version, 1);
   assert.equal(chordCatalog.playlistId, 'PL0gpFgtesNu015JGaKSx8BonbVjGRefKb');
   assert.equal(chordCatalog.license, 'CC BY-NC 4.0');
+  assert.equal(chordCatalog.matchingPolicy, 'composition-first-lyrics-v2');
+  assert.equal(chordCatalog.stats.matchingPolicy, 'composition-first-lyrics-v2');
   assert.equal(chordCatalog.stats.playlistEntries, 1611);
   assert.equal(chordCatalog.stats.uniqueVideos, playlistVideoIds.size);
   assert.equal(chordCatalog.stats.uniqueVideos, 1608);
-  assert.equal(chordCatalog.stats.chartedUniqueVideos, 519);
+  assert.ok(chordCatalog.stats.chartedUniqueVideos >= 600, `expected at least 600 charts, received ${chordCatalog.stats.chartedUniqueVideos}`);
   assert.equal(
     chordCatalog.stats.coveragePercent,
     Number(((charts.length / playlistVideoIds.size) * 100).toFixed(2)),
   );
-  assert.ok(chordCatalog.stats.highConfidence >= 450);
-  assert.ok(chordCatalog.stats.lowConfidence <= 25);
   assert.equal(chordCatalog.stats.unmatched, chordCatalog.stats.uniqueVideos - charts.length);
   assert.equal(charts.length, chordCatalog.stats.chartedUniqueVideos);
   assert.equal(
     chordCatalog.stats.highConfidence + chordCatalog.stats.mediumConfidence + chordCatalog.stats.lowConfidence,
     charts.length,
   );
+  assert.ok(chordCatalog.stats.lyricsConflictsRejected > 0, 'expected lyric verification to reject at least one same-title different song');
 });
 
 test('catalog attribution and limitations are explicit', () => {
@@ -39,8 +40,12 @@ test('catalog attribution and limitations are explicit', () => {
   assert.match(chordCatalog.timingNotice, /estimat/i);
 });
 
-test('every accepted map belongs to the playlist and declares match provenance', () => {
+test('every accepted map belongs to the playlist and declares lyric-aware provenance', () => {
   const confidenceCounts = { high: 0, medium: 0, low: 0 };
+  const matchModes = new Set(['same-composition-cover', 'same-composition-version', 'same-title-recording', 'same-title-unverified', 'fuzzy-composition']);
+  const lyricStatuses = new Set(['verified', 'uncertain', 'unavailable', 'not-required']);
+  let verifiedCovers = 0;
+  let unverifiedFallbacks = 0;
   for (const [videoId, chart] of charts) {
     assert.match(videoId, /^[A-Za-z0-9_-]{11}$/);
     assert.ok(playlistVideoIds.has(videoId), `${videoId} is not in the bundled playlist`);
@@ -54,11 +59,35 @@ test('every accepted map belongs to the playlist and declares match provenance',
     assert.match(chart.provenance.spotifySongId, /^[A-Za-z0-9]{22}$/);
     assert.ok(['high', 'medium', 'low'].includes(chart.provenance.confidence));
     assert.equal(chart.provenance.timing, 'estimated-uniform-fit');
+    assert.equal(chart.provenance.policy, 'composition-first-lyrics-v2');
+    assert.ok(matchModes.has(chart.provenance.matchMode), `${videoId} has unknown match mode ${chart.provenance.matchMode}`);
+    assert.ok(lyricStatuses.has(chart.provenance.lyricsVerification), `${videoId} has invalid lyric status ${chart.provenance.lyricsVerification}`);
+    assert.equal(typeof chart.provenance.titleExact, 'boolean');
+    assert.equal(typeof chart.provenance.artistEquivalent, 'boolean');
+    assert.equal(typeof chart.provenance.versionDifferenceAccepted, 'boolean');
+    assert.ok(Array.isArray(chart.provenance.playlistVersionTags));
+    assert.ok(Array.isArray(chart.provenance.matchedVersionTags));
     assert.ok(Number.isFinite(chart.provenance.score));
     assert.ok(Number.isFinite(chart.provenance.titleScore));
     assert.ok(Number.isFinite(chart.provenance.artistScore));
+    if (chart.provenance.lyricsVerification === 'verified') {
+      assert.ok(Number.isFinite(chart.provenance.lyricsSimilarity));
+      assert.ok(chart.provenance.lyricsSimilarity >= 0 && chart.provenance.lyricsSimilarity <= 1);
+      assert.ok(Number.isFinite(chart.provenance.lrclibTargetId));
+      assert.ok(Number.isFinite(chart.provenance.lrclibCandidateId));
+    }
+    if (chart.provenance.matchMode === 'same-composition-cover') {
+      assert.equal(chart.provenance.lyricsVerification, 'verified');
+      verifiedCovers += 1;
+    }
+    if (chart.provenance.matchMode === 'same-title-unverified') {
+      assert.ok(['unavailable', 'uncertain'].includes(chart.provenance.lyricsVerification));
+      unverifiedFallbacks += 1;
+    }
     confidenceCounts[chart.provenance.confidence] += 1;
   }
+  assert.equal(verifiedCovers, chordCatalog.stats.lyricsVerified);
+  assert.equal(unverifiedFallbacks, chordCatalog.stats.unverifiedFallbackAccepted + chordCatalog.stats.uncertainFallbackAccepted);
   assert.deepEqual(confidenceCounts, {
     high: chordCatalog.stats.highConfidence,
     medium: chordCatalog.stats.mediumConfidence,

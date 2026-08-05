@@ -1,15 +1,27 @@
-name: Build best-effort chord catalog
+name: Build composition-first chord catalog
 
+# Covers, remixes, live recordings, acoustic takes, and other versions are
+# accepted when they resolve to the same underlying song composition. Cross-
+# artist matches use transient lyric fingerprints; lyric text is never committed.
 on:
   push:
     branches:
       - main
-      - agent/best-effort-chord-catalog
+      - agent/composition-first-chord-matching
     paths:
       - .github/workflows/index-chords.yml
       - scripts/index-chords.py
+      - scripts/index-composition-chords.py
+      - scripts/lrclib_lyrics.py
+      - scripts/finalize-composition-stats.py
       - src/data/playlist-catalog.json
+      - src/app-parts/10-chord-catalog.js
+      - src/app-parts/11-composition-matches.js
+      - src/boot.js
+      - service-worker.js
       - tests/chords.test.mjs
+      - tests/chord-catalog.test.mjs
+      - tests/test_composition_matcher.py
   workflow_dispatch:
   schedule:
     - cron: '43 5 2 * *'
@@ -47,7 +59,12 @@ jobs:
         with:
           path: /tmp/fretline-chord-sources
           key: fretline-chord-sources-v1
-          save-always: true
+
+      - name: Restore lyric-verification cache
+        uses: actions/cache@v5
+        with:
+          path: /tmp/fretline-lrclib-cache.json
+          key: fretline-lrclib-v1-${{ hashFiles('src/data/playlist-catalog.json') }}
 
       - name: Install catalog tools
         run: |
@@ -71,9 +88,14 @@ jobs:
               --local-dir /tmp/fretline-chord-sources/spotify
           fi
 
-      - name: Match playlist recordings and build chord maps
+      - name: Validate composition and lyric-fingerprint policy
+        run: python -m unittest tests/test_composition_matcher.py
+
+      - name: Match compositions and build chord maps
+        env:
+          FRETLINE_LRCLIB_CACHE: /tmp/fretline-lrclib-cache.json
         run: |
-          python scripts/index-chords.py \
+          python scripts/index-composition-chords.py \
             --playlist src/data/playlist-catalog.json \
             --chordonomicon /tmp/fretline-chord-sources/chordonomicon/chordonomicon_v2.csv \
             --spotify-metadata /tmp/fretline-chord-sources/spotify/spotify-huge-audio-features.parquet \
@@ -82,21 +104,32 @@ jobs:
             --report src/data/chord-match-report.json \
             --reuse-metadata-cache
 
-      - name: Enforce meaningful coverage
+      - name: Finalize accepted-match statistics
+        run: |
+          python scripts/finalize-composition-stats.py \
+            --catalog src/data/chord-catalog.json \
+            --report src/data/chord-match-report.json
+
+      - name: Enforce increased coverage
         run: |
           python - <<'PY'
           import json
           catalog = json.load(open('src/data/chord-catalog.json', encoding='utf-8'))
           stats = catalog['stats']
           print(json.dumps(stats, indent=2))
-          if stats['chartedUniqueVideos'] < 100:
-              raise SystemExit('Fewer than 100 high-enough-confidence charts were matched; refusing to publish.')
+          if stats['chartedUniqueVideos'] < 600:
+              raise SystemExit('Lyrics-aware composition matching produced fewer than 600 charts; refusing to publish.')
           PY
 
       - name: Validate generated application
         run: |
           npm test
           npm run check
+          python -m py_compile \
+            scripts/index-chords.py \
+            scripts/index-composition-chords.py \
+            scripts/lrclib_lyrics.py \
+            scripts/finalize-composition-stats.py
 
       - name: Commit refreshed chord catalog
         id: commit
@@ -107,7 +140,7 @@ jobs:
           if git diff --cached --quiet; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
           else
-            git commit -m 'Refresh best-effort chord catalog'
+            git commit -m 'Refresh lyrics-verified composition chord catalog'
             git push origin "HEAD:${GITHUB_REF_NAME}"
             echo 'changed=true' >> "$GITHUB_OUTPUT"
           fi
