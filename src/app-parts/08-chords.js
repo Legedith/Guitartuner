@@ -25,8 +25,9 @@ function createChordDiagramElement(voicing, tuningMidi, options = {}) {
   const fretGap = (bottom - top) / visibleFrets;
   const startFret = voicing.baseFret > 1 ? voicing.baseFret : 1;
   const mode = chordAccidentalMode();
-  const svg = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': `${currentChordSymbol()} chord diagram, ${voicing.position}` });
-  const title = svgNode('title'); title.textContent = `${currentChordSymbol()} · ${voicing.position}`; svg.append(title);
+  const symbolLabel = options.symbol || currentChordSymbol();
+  const svg = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': `${symbolLabel} chord diagram, ${voicing.position}` });
+  const title = svgNode('title'); title.textContent = `${symbolLabel} · ${voicing.position}`; svg.append(title);
 
   for (let row = 0; row <= visibleFrets; row += 1) {
     const y = top + (row * fretGap);
@@ -82,12 +83,12 @@ function renderChordDiagramForSymbol(container, symbol, options = {}) {
   }
   const tuningMidi = options.tuningMidi ?? currentTuning?.midi;
   if (!Array.isArray(tuningMidi)) return null;
-  const voicings = generateChordVoicings(tuningMidi, parsed.root, parsed.quality, { limit: options.limit ?? 6, maxFret: options.maxFret ?? 12 });
+  const voicings = generateChordVoicings(tuningMidi, parsed.root, parsed.quality, { limit: options.limit ?? 6, maxFret: options.maxFret ?? 12, bassPitchClass: parsed.slashBass });
   const voicing = voicings[Math.min(options.voicingIndex ?? 0, Math.max(0, voicings.length - 1))] ?? null;
   if (!voicing) {
     const empty = document.createElement('div'); empty.className = 'chord-empty'; empty.innerHTML = '<strong>No practical shape found</strong><span>Try another voicing or tuning.</span>'; container.append(empty); return null;
   }
-  container.append(createChordDiagramElement(voicing, tuningMidi, options));
+  container.append(createChordDiagramElement(voicing, tuningMidi, { ...options, symbol }));
   return voicing;
 }
 
@@ -144,7 +145,7 @@ function renderChordLibrary(symbol = null) {
   dom.nextVoicingButton.disabled = chordVoicings.length < 2;
   dom.playChordButton.disabled = !voicing;
   dom.chordDiagram.replaceChildren();
-  if (voicing) dom.chordDiagram.append(createChordDiagramElement(voicing, currentTuning.midi));
+  if (voicing) dom.chordDiagram.append(createChordDiagramElement(voicing, currentTuning.midi, { symbol: symbolText }));
   else { const empty = document.createElement('div'); empty.className = 'chord-empty'; empty.innerHTML = '<strong>No practical shape found</strong><span>Try another chord or tuning.</span>'; dom.chordDiagram.append(empty); }
   renderChordNotes(voicing); renderEssentialChords(); updateChordPlayButton(); saveSettings();
 }
