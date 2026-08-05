@@ -1,4 +1,4 @@
-function saveSettings() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (_) {} }
+function saveSettings() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); return true; } catch (_) { return false; } }
 function resolvedDarkTheme() { return settings.theme === 'dark' || (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches); }
 function applyTheme() {
   document.documentElement.dataset.theme = settings.theme;
@@ -19,9 +19,8 @@ function updateInstrumentControls() { dom.instrumentSwitch.querySelectorAll('but
 function updateTuningSummary() { dom.tuningName.textContent = currentTuning.name; dom.tuningNotes.textContent = formatTuningNotes(currentTuning, settings.accidentalMode); }
 function updateModeControl() {
   const manual = settings.mode === 'manual';
-  dom.modeButton.setAttribute('aria-pressed', String(manual));
-  dom.modeButton.querySelector('span').textContent = manual ? 'Manual' : 'Auto';
-  dom.modeButton.title = manual ? 'Switch to automatic string detection' : 'Lock to one string';
+  dom.modeSwitch.checked = manual;
+  dom.modeSwitch.title = manual ? 'Manual mode: the selected string is locked' : 'Auto mode: Fretline recognizes the string';
 }
 function targetLabel(target) { return `${target.note}${target.octave}`; }
 function updateToneButton() {
@@ -52,7 +51,8 @@ function renderStrings() {
   updateActiveString(); updateTunedProgress();
 }
 function updateTunedProgress() {
-  const count = tunedStrings.size; const total = targets.length;
-  dom.tunedProgress.textContent = count === total && total > 0 ? 'All strings tuned' : `${count} of ${total} strings tuned`;
+  const count = tunedStrings.size; const total = targets.length; const complete = count === total && total > 0;
+  dom.tunedProgress.textContent = complete ? 'All strings tuned' : `${count} of ${total} strings tuned`;
   dom.resetProgressButton.hidden = count === 0;
+  dom.readyCard.hidden = !complete;
 }

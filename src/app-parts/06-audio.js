@@ -10,7 +10,7 @@ async function releaseWakeLock() { if (!wakeLockSentinel) return; try { await wa
 function updateMicrophoneButton() { dom.microphoneButton.querySelector('span').textContent = listening ? 'Stop tuner' : 'Start tuning'; dom.microphoneButton.setAttribute('aria-pressed', String(listening)); }
 async function startListening() {
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error(!window.isSecureContext ? 'INSECURE_CONTEXT' : 'MEDIA_UNSUPPORTED');
-  stopReferenceTone(); mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false });
+  stopReferenceTone(); stopChordSound(); mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false });
   const AudioContextClass = window.AudioContext || window.webkitAudioContext; microphoneContext = new AudioContextClass({ latencyHint: 'interactive' }); await microphoneContext.resume(); microphoneSource = microphoneContext.createMediaStreamSource(mediaStream); analyser = microphoneContext.createAnalyser(); analyser.fftSize = 4096; analyser.smoothingTimeConstant = 0; microphoneSource.connect(analyser); analysisBuffer = new Float32Array(analyser.fftSize);
   listening = true; resetPitchTracking(); lastAnalysisAt = 0; dom.signalLevel.style.width = '0%'; updateMicrophoneButton(); setWaitingDisplay(); await requestWakeLock(); animationFrame = requestAnimationFrame(analysisLoop);
 }
@@ -32,7 +32,7 @@ async function ensureReferenceContext() {
   await referenceContext.resume(); return referenceContext;
 }
 function removeOldReferenceBuffer() {
-  if (referenceBufferCache.size < 24) return;
+  if (referenceBufferCache.size < 48) return;
   const oldestKey = referenceBufferCache.keys().next().value; referenceBufferCache.delete(oldestKey);
 }
 function getReferenceBuffer(context, target, instrument) {
@@ -65,7 +65,7 @@ function finishReferenceTone(playId, nodes) {
 }
 async function playReferenceString() {
   const target = targets[selectedTargetIndex] ?? targets[0]; if (!target) return;
-  const instrument = settings.instrument; stopReferenceTone({ updateDisplay: false }); const playId = referenceTonePlayId;
+  const instrument = settings.instrument; stopChordSound(); stopReferenceTone({ updateDisplay: false }); const playId = referenceTonePlayId;
   try {
     const context = await ensureReferenceContext(); if (playId !== referenceTonePlayId || instrument !== settings.instrument) return;
     const profile = referenceProfile(instrument); const buffer = getReferenceBuffer(context, target, instrument); const now = context.currentTime; const source = context.createBufferSource(); const highpass = context.createBiquadFilter(); const lowpass = context.createBiquadFilter(); const body = context.createBiquadFilter(); const master = context.createGain(); const compressor = context.createDynamicsCompressor();
@@ -78,8 +78,55 @@ async function playReferenceString() {
   } catch (error) { stopReferenceTone(); showToast(error.message || 'Reference string could not be played.'); }
 }
 async function toggleReferenceTone() { if (tonePlaying) { stopReferenceTone(); return; } await playReferenceString(); }
+
+function updateChordSoundControls() { if (typeof updateChordPlayButton === 'function') updateChordPlayButton(); }
+function disconnectChordPlayback(playback) {
+  if (!playback) return;
+  for (const source of playback.sources ?? []) { try { source.disconnect(); } catch (_) {} }
+  disconnectReferenceNodes(playback.nodes ?? []);
+}
+function stopChordSound() {
+  clearTimeout(chordSoundTimer); chordSoundTimer = 0; chordSoundPlayId += 1;
+  const playback = chordSoundPlayback; chordSoundPlayback = null; chordSoundPlaying = false; updateChordSoundControls();
+  if (!playback) return;
+  if (referenceContext && referenceContext.state !== 'closed') {
+    const now = referenceContext.currentTime;
+    try { playback.master.gain.cancelScheduledValues(now); playback.master.gain.setValueAtTime(Math.max(.0001, playback.master.gain.value), now); playback.master.gain.exponentialRampToValueAtTime(.0001, now + .035); } catch (_) {}
+    for (const source of playback.sources) try { source.stop(now + .04); } catch (_) {}
+    setTimeout(() => disconnectChordPlayback(playback), 75);
+  } else disconnectChordPlayback(playback);
+}
+function finishChordSound(playId, playback) {
+  if (playId !== chordSoundPlayId) { disconnectChordPlayback(playback); return; }
+  clearTimeout(chordSoundTimer); chordSoundTimer = 0; chordSoundPlayback = null; chordSoundPlaying = false; disconnectChordPlayback(playback); updateChordSoundControls();
+}
+async function playChordVoicingSound(voicing, tuningMidi = currentTuning?.midi, instrument = settings.instrument) {
+  if (!voicing || !Array.isArray(tuningMidi) || voicing.frets?.length !== tuningMidi.length) return;
+  stopReferenceTone({ updateDisplay: false }); stopChordSound(); const playId = chordSoundPlayId;
+  try {
+    const context = await ensureReferenceContext(); if (playId !== chordSoundPlayId) return;
+    const profile = referenceProfile(instrument); const now = context.currentTime + .012; const highpass = context.createBiquadFilter(); const lowpass = context.createBiquadFilter(); const body = context.createBiquadFilter(); const master = context.createGain(); const compressor = context.createDynamicsCompressor(); const sources = [];
+    highpass.type = 'highpass'; highpass.frequency.value = profile.highpass; highpass.Q.value = .52; lowpass.type = 'lowpass'; lowpass.frequency.value = profile.lowpass; lowpass.Q.value = .64; body.type = 'peaking'; body.frequency.value = instrument === 'ukulele' ? 370 : 210; body.Q.value = .85; body.gain.value = instrument === 'ukulele' ? 1.4 : 1.8;
+    compressor.threshold.value = -19; compressor.knee.value = 20; compressor.ratio.value = 3; compressor.attack.value = .004; compressor.release.value = .22;
+    highpass.connect(lowpass).connect(body).connect(master).connect(compressor).connect(context.destination);
+    let totalDuration = 0; let soundedIndex = 0;
+    voicing.frets.forEach((fret, stringIndex) => {
+      if (fret < 0) return;
+      const midi = tuningMidi[stringIndex] + fret; const frequency = midiToFrequency(midi, settings.referenceA); const target = { midi, frequency };
+      const buffer = getReferenceBuffer(context, target, instrument); const source = context.createBufferSource(); const start = now + (soundedIndex * (instrument === 'ukulele' ? .024 : .032));
+      source.buffer = buffer; source.connect(highpass); source.start(start); source.stop(start + buffer.duration); sources.push(source); totalDuration = Math.max(totalDuration, (start - now) + buffer.duration); soundedIndex += 1;
+    });
+    if (!sources.length) throw new Error('This chord has no sounding strings.');
+    master.gain.setValueAtTime(.0001, now); master.gain.exponentialRampToValueAtTime(instrument === 'ukulele' ? .44 : .36, now + .018); master.gain.setValueAtTime(instrument === 'ukulele' ? .44 : .36, Math.max(now + .04, now + totalDuration - .15)); master.gain.exponentialRampToValueAtTime(.0001, now + totalDuration);
+    const playback = { sources, nodes: [highpass, lowpass, body, master, compressor], master }; chordSoundPlayback = playback; chordSoundPlaying = true; updateChordSoundControls();
+    chordSoundTimer = setTimeout(() => finishChordSound(playId, playback), (totalDuration * 1000) + 140);
+  } catch (error) { stopChordSound(); showToast(error.message || 'The chord could not be played.'); }
+}
+
 function resetProgress() { tunedStrings = new Set(); stableTargetIndex = null; stableSince = 0; updateActiveString(); updateTunedProgress(); }
 function resetPreferences() {
-  if (!confirm('Reset preferences and return to standard guitar tuning? Custom tunings will be kept.')) return; const customTunings = settings.customTunings; Object.assign(settings, makeDefaults(customTunings)); stopReferenceTone(); if (listening) stopListening(); selectedTargetIndex = 0; renderSettings(); updateCurrentTuning(); showToast('Preferences reset');
+  if (!confirm('Reset preferences and return to standard guitar tuning? Your custom tunings, playlist, and chord maps will be kept.')) return;
+  const preserved = { customTunings: settings.customTunings, playlistUrl: settings.playlistUrl, playlistTracks: settings.playlistTracks, songCharts: settings.songCharts };
+  Object.assign(settings, makeDefaults(preserved.customTunings), preserved); stopReferenceTone(); stopChordSound(); if (listening) stopListening(); selectedTargetIndex = 0; renderSettings(); updateCurrentTuning(); initializeChordLibrary?.(); initializeSongLibrary?.(); showToast('Preferences reset');
 }
 function initializeMeterTicks() { const fragment = document.createDocumentFragment(); for (let index = 0; index < 21; index += 1) fragment.append(document.createElement('span')); dom.meterTicks.append(fragment); }

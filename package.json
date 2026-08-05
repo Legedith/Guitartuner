@@ -1,12 +1,12 @@
 {
   "name": "fretline-tuner",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "A private, offline-capable guitar and ukulele tuner.",
+  "description": "A private guitar and ukulele tuner with tuning-aware chords and play-along tools.",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/boot.js && node --check src/pitch.js && node --check src/reference-string.js && node --check src/tunings.js && node --check src/app-parts/*.js && node --check service-worker.js"
+    "check": "node --check src/boot.js && node --check src/chords.js && node --check src/pitch.js && node --check src/reference-string.js && node --check src/song-library.js && node --check src/tunings.js && node --check src/app-parts/*.js && node --check service-worker.js"
   },
   "engines": { "node": ">=20" }
 }
