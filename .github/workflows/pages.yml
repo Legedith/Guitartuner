@@ -3,6 +3,8 @@ name: Validate and deploy Fretline
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -10,17 +12,15 @@ permissions:
   pages: write
 
 concurrency:
-  group: fretline-pages
+  group: fretline-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -29,6 +29,16 @@ jobs:
 
       - name: Validate source
         run: npm test && npm run check
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Publish tested commit
         run: git push origin HEAD:gh-pages
