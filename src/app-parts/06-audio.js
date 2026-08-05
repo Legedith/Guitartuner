@@ -28,21 +28,56 @@ async function toggleMicrophone() {
 }
 async function ensureReferenceContext() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext; if (!AudioContextClass) throw new Error('Audio output is not supported.');
-  if (!referenceContext || referenceContext.state === 'closed') referenceContext = new AudioContextClass({ latencyHint: 'interactive' }); await referenceContext.resume(); return referenceContext;
+  if (!referenceContext || referenceContext.state === 'closed') { referenceContext = new AudioContextClass({ latencyHint: 'interactive' }); referenceBufferCache = new Map(); }
+  await referenceContext.resume(); return referenceContext;
 }
-function stopReferenceTone() {
-  clearTimeout(referenceToneTimer); for (const node of referenceToneNodes) { try { node.stop?.(); } catch (_) {} try { node.disconnect?.(); } catch (_) {} }
-  referenceToneNodes = []; tonePlaying = false; updateToneButton(); if (listening) setWaitingDisplay();
+function removeOldReferenceBuffer() {
+  if (referenceBufferCache.size < 24) return;
+  const oldestKey = referenceBufferCache.keys().next().value; referenceBufferCache.delete(oldestKey);
 }
-async function toggleReferenceTone() {
-  if (tonePlaying) { stopReferenceTone(); return; } const target = targets[selectedTargetIndex] ?? targets[0];
+function getReferenceBuffer(context, target, variant, instrument) {
+  const key = `${instrument}:${context.sampleRate}:${target.frequency.toFixed(5)}:${variant}`;
+  const cached = referenceBufferCache.get(key); if (cached) return cached;
+  const samples = generatePluckedStringSamples({ frequency: target.frequency, instrument, sampleRate: context.sampleRate, seed: (target.midi * 4099) + (variant * 7919) + (instrument === 'ukulele' ? 17 : 0) });
+  if (!samples.length) throw new Error('Reference string could not be generated.');
+  const buffer = context.createBuffer(1, samples.length, context.sampleRate); buffer.copyToChannel(samples, 0); removeOldReferenceBuffer(); referenceBufferCache.set(key, buffer); return buffer;
+}
+function disconnectReferenceNodes(nodes) {
+  for (const node of nodes) { try { node.disconnect?.(); } catch (_) {} }
+}
+function stopReferenceTone({ updateDisplay = true } = {}) {
+  clearTimeout(referenceToneTimer); referenceToneTimer = 0; referenceTonePlayId += 1;
+  const nodes = referenceToneNodes; referenceToneNodes = []; tonePlaying = false; updateToneButton();
+  const source = nodes[0]; const master = nodes[4];
+  if (referenceContext && referenceContext.state !== 'closed' && master) {
+    const now = referenceContext.currentTime;
+    try { master.gain.cancelScheduledValues(now); master.gain.setValueAtTime(Math.max(.0001, master.gain.value), now); master.gain.exponentialRampToValueAtTime(.0001, now + .025); } catch (_) {}
+    try { source?.stop(now + .03); } catch (_) {}
+    setTimeout(() => disconnectReferenceNodes(nodes), 55);
+  } else {
+    try { source?.stop?.(); } catch (_) {} disconnectReferenceNodes(nodes);
+  }
+  if (updateDisplay && targets.length) setWaitingDisplay();
+}
+function finishReferenceTone(playId, nodes) {
+  if (playId !== referenceTonePlayId) { disconnectReferenceNodes(nodes); return; }
+  clearTimeout(referenceToneTimer); referenceToneTimer = 0; referenceToneNodes = []; tonePlaying = false; disconnectReferenceNodes(nodes); updateToneButton(); if (targets.length) setWaitingDisplay();
+}
+async function playReferenceString() {
+  const target = targets[selectedTargetIndex] ?? targets[0]; if (!target) return;
+  const instrument = settings.instrument; stopReferenceTone({ updateDisplay: false }); const playId = referenceTonePlayId;
   try {
-    const context = await ensureReferenceContext(); const now = context.currentTime; const master = context.createGain(); const fundamentalGain = context.createGain(); const harmonicGain = context.createGain(); const fundamental = context.createOscillator(); const harmonic = context.createOscillator();
-    master.gain.setValueAtTime(.0001, now); master.gain.exponentialRampToValueAtTime(.16, now + .035); master.gain.setValueAtTime(.16, now + 1.8); master.gain.exponentialRampToValueAtTime(.0001, now + 2.25); fundamentalGain.gain.value = .86; harmonicGain.gain.value = .14; fundamental.type = 'sine'; harmonic.type = 'sine'; fundamental.frequency.value = target.frequency; harmonic.frequency.value = target.frequency * 2;
-    fundamental.connect(fundamentalGain).connect(master); harmonic.connect(harmonicGain).connect(master); master.connect(context.destination); fundamental.start(now); harmonic.start(now); fundamental.stop(now + 2.3); harmonic.stop(now + 2.3);
-    referenceToneNodes = [fundamental, harmonic, fundamentalGain, harmonicGain, master]; tonePlaying = true; updateToneButton(); dom.listenStatus.textContent = `Reference tone · ${targetLabel(target)}`; dom.pitchInstruction.textContent = 'Listen, then match the pitch'; referenceToneTimer = setTimeout(stopReferenceTone, 2350);
-  } catch (error) { showToast(error.message || 'Reference tone could not be played.'); }
+    const context = await ensureReferenceContext(); if (playId !== referenceTonePlayId || instrument !== settings.instrument) return;
+    const profile = referenceProfile(instrument); const variant = referencePluckCounter % 3; referencePluckCounter += 1; const buffer = getReferenceBuffer(context, target, variant, instrument); const now = context.currentTime; const source = context.createBufferSource(); const highpass = context.createBiquadFilter(); const lowpass = context.createBiquadFilter(); const body = context.createBiquadFilter(); const master = context.createGain(); const compressor = context.createDynamicsCompressor();
+    source.buffer = buffer; highpass.type = 'highpass'; highpass.frequency.value = profile.highpass; highpass.Q.value = .55; lowpass.type = 'lowpass'; lowpass.frequency.value = profile.lowpass; lowpass.Q.value = .68; body.type = 'peaking'; body.frequency.value = instrument === 'ukulele' ? 370 : 210; body.Q.value = .9; body.gain.value = instrument === 'ukulele' ? 1.6 : 1.9;
+    master.gain.setValueAtTime(.0001, now); master.gain.exponentialRampToValueAtTime(.78, now + .008); master.gain.setValueAtTime(.78, Math.max(now + .01, now + buffer.duration - .09)); master.gain.exponentialRampToValueAtTime(.0001, now + buffer.duration);
+    compressor.threshold.value = -16; compressor.knee.value = 16; compressor.ratio.value = 2.4; compressor.attack.value = .003; compressor.release.value = .16;
+    source.connect(highpass).connect(lowpass).connect(body).connect(master).connect(compressor).connect(context.destination);
+    const nodes = [source, highpass, lowpass, body, master, compressor]; referenceToneNodes = nodes; tonePlaying = true; updateToneButton(); dom.listenStatus.textContent = `Reference string · ${targetLabel(target)}`; dom.pitchInstruction.textContent = `${INSTRUMENTS[instrument].name} string · listen, then match the pitch`;
+    source.addEventListener('ended', () => finishReferenceTone(playId, nodes), { once: true }); source.start(now); source.stop(now + buffer.duration); referenceToneTimer = setTimeout(() => finishReferenceTone(playId, nodes), (buffer.duration * 1000) + 120);
+  } catch (error) { stopReferenceTone(); showToast(error.message || 'Reference string could not be played.'); }
 }
+async function toggleReferenceTone() { if (tonePlaying) { stopReferenceTone(); return; } await playReferenceString(); }
 function resetProgress() { tunedStrings = new Set(); stableTargetIndex = null; stableSince = 0; updateActiveString(); updateTunedProgress(); }
 function resetPreferences() {
   if (!confirm('Reset preferences and return to standard guitar tuning? Custom tunings will be kept.')) return; const customTunings = settings.customTunings; Object.assign(settings, makeDefaults(customTunings)); stopReferenceTone(); if (listening) stopListening(); selectedTargetIndex = 0; renderSettings(); updateCurrentTuning(); showToast('Preferences reset');
