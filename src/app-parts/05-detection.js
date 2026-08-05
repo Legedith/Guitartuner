@@ -57,7 +57,7 @@ function handleNoPitch(now, rms = 0) {
   }
 }
 function analysisLoop(now) {
-  if (!listening) return; animationFrame = requestAnimationFrame(analysisLoop); if (tonePlaying || now - lastAnalysisAt < ANALYSIS_INTERVAL_MS) return; lastAnalysisAt = now;
+  if (!listening) return; animationFrame = requestAnimationFrame(analysisLoop); if (tonePlaying || chordSoundPlaying || now - lastAnalysisAt < ANALYSIS_INTERVAL_MS) return; lastAnalysisAt = now;
   analyser.getFloatTimeDomainData(analysisBuffer); const rms = calculateRms(analysisBuffer); updateSignalLevel(rms); if (rms < minimumRms()) { handleNoPitch(now, rms); return; }
   const frequencies = targets.map((target) => target.frequency); const minFrequency = Math.max(45, Math.min(...frequencies) * .55); const maxFrequency = Math.min(1300, Math.max(...frequencies) * 3.1);
   const pitch = detectPitchYIN(analysisBuffer, microphoneContext.sampleRate, { minFrequency, maxFrequency, minRms: minimumRms() }); if (!pitch || !handlePitch(pitch, now)) handleNoPitch(now, rms);
