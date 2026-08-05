@@ -19,12 +19,15 @@ const ukulele = getTuningById('ukulele-standard').midi;
 
 function pitchClass(value) { return ((value % 12) + 12) % 12; }
 
-test('parses common chord spellings and slash bass', () => {
+test('parses common, extended, and slash chord spellings', () => {
   assert.deepEqual(parseChordSymbol('Am'), { root: 9, quality: 'minor', slashBass: null, preferFlats: false, rest: false });
   assert.deepEqual(parseChordSymbol('B♭maj7/D'), { root: 10, quality: 'maj7', slashBass: 2, preferFlats: true, rest: false });
   assert.equal(parseChordSymbol('F#sus4').quality, 'sus4');
-  assert.equal(parseChordSymbol('Cadd9'), null);
+  assert.equal(parseChordSymbol('Cadd9').quality, 'add9');
+  assert.equal(parseChordSymbol('Cm9').quality, 'm9');
+  assert.equal(parseChordSymbol('Cdim7').quality, 'dim7');
   assert.equal(parseChordSymbol('N.C.').rest, true);
+  assert.equal(parseChordSymbol('C13'), null);
 });
 
 test('normalizes note names and formats accidentals', () => {
@@ -39,10 +42,11 @@ test('transposes supported chord symbols without changing quality', () => {
   assert.equal(transposeChordSymbol('Am', 2, 'sharps'), 'Bm');
   assert.equal(transposeChordSymbol('B♭maj7/D', 2, 'flats'), 'Cmaj7/E');
   assert.equal(transposeChordSymbol('G7', -2, 'sharps'), 'F7');
+  assert.equal(transposeChordSymbol('Fadd9', 2, 'sharps'), 'Gadd9');
   assert.equal(transposeChordSymbol('—', 5), '—');
 });
 
-for (const symbol of ['C', 'G', 'D', 'A', 'E', 'F', 'Am', 'Em', 'Dm', 'Bm', 'A7', 'E7']) {
+for (const symbol of ['C', 'G', 'D', 'A', 'E', 'F', 'Am', 'Em', 'Dm', 'Bm', 'A7', 'E7', 'Cadd9']) {
   test(`generates a valid standard-guitar ${symbol} shape`, () => {
     const parsed = parseChordSymbol(symbol);
     const voicings = generateChordVoicings(guitar, parsed.root, parsed.quality, { limit: 6 });
@@ -62,6 +66,15 @@ for (const quality of CHORD_QUALITIES) {
     }
   });
 }
+
+test('slash chords put the requested note in the actual bass', () => {
+  const parsed = parseChordSymbol('G/B');
+  const voicings = generateChordVoicings(guitar, parsed.root, parsed.quality, { limit: 4, bassPitchClass: parsed.slashBass });
+  assert.ok(voicings.length > 0);
+  const sounded = voicingNoteMidis(guitar, voicings[0].frets).filter(Number.isFinite);
+  assert.equal(pitchClass(Math.min(...sounded)), parsed.slashBass);
+  assert.ok(isChordVoicingValid(guitar, voicings[0].frets, parsed.root, parsed.quality, { bassPitchClass: parsed.slashBass }));
+});
 
 test('generated notes never leave the requested chord pitch classes', () => {
   const parsed = parseChordSymbol('Dmaj7');
