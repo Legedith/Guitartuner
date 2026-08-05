@@ -11,7 +11,6 @@ Short, generic titles still need corroborating artist or duration evidence.
 from __future__ import annotations
 
 import importlib.util
-import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -58,7 +57,7 @@ def _composition_title_score(track: dict[str, Any], candidate: Any) -> float:
     if containment >= 0.99 and balance < 0.5:
         score -= 12.0
 
-    length_ratio = min(len(track["title_base"]), len(candidate.title_base])) / max(
+    length_ratio = min(len(track["title_base"]), len(candidate.title_base)) / max(
         1, len(track["title_base"]), len(candidate.title_base)
     )
     if length_ratio < 0.5:
