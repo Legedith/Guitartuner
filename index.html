@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" id="themeColor" content="#f4f5ef">
+  <meta name="description" content="A precise, private guitar and ukulele tuner that works offline.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Fretline">
+  <title>Fretline — Guitar & Ukulele Tuner</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="./styles/foundation.css">
+  <link rel="stylesheet" href="./styles/tuner.css">
+  <link rel="stylesheet" href="./styles/dialogs.css">
+  <script>
+    try {
+      const saved = JSON.parse(localStorage.getItem('fretline:tuner:v1') || '{}');
+      document.documentElement.dataset.theme = ['light', 'dark'].includes(saved.theme) ? saved.theme : 'system';
+    } catch (_) {}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">Skip to tuner</a>
+  <div class="app-shell">
+    <header class="app-header">
+      <a class="brand" href="./" aria-label="Fretline tuner home">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M5.5 17.5a10.5 10.5 0 0 1 21 0"/><path d="M16 7v4M8.7 10.2l2.3 3.2M23.3 10.2 21 13.4"/>
+          <path class="brand-needle" d="m16 17.5 5.6-5.2"/><circle cx="16" cy="17.5" r="2.2"/>
+        </svg>
+        <span>Fretline</span>
+      </a>
+      <button class="icon-button" id="settingsButton" type="button" aria-label="Open settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.37a1.7 1.7 0 0 0-1 .63 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1A1.7 1.7 0 0 0 8.56 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.2 15a1.7 1.7 0 0 0-.64-1 1.7 1.7 0 0 0-1.1-.4H2.4v-4h.1A1.7 1.7 0 0 0 4 8.56a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.4 4.2a1.7 1.7 0 0 0 1-.64 1.7 1.7 0 0 0 .4-1.1V2.4h4v.1A1.7 1.7 0 0 0 14.84 4a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.2 8.4a1.7 1.7 0 0 0 .64 1 1.7 1.7 0 0 0 1.1.4h.1v4h-.1A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+      </button>
+    </header>
+
+    <section class="setup-card" aria-label="Instrument and tuning">
+      <div class="segmented-control" id="instrumentSwitch" aria-label="Instrument">
+        <button type="button" data-instrument="guitar">Guitar</button><button type="button" data-instrument="ukulele">Ukulele</button>
+      </div>
+      <button class="tuning-picker" id="tuningButton" type="button" aria-haspopup="dialog" aria-controls="tuningDialog">
+        <span><span class="eyebrow">Tuning</span><strong id="tuningName">Standard</strong></span>
+        <span class="tuning-notes" id="tuningNotes">E · A · D · G · B · E</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+    </section>
+
+    <main id="mainContent">
+      <section class="tuner-card" id="tunerCard" data-state="idle" aria-label="Tuner">
+        <div class="listen-status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span id="listenStatus">Microphone is off</span></div>
+        <div class="pitch-display" aria-label="Target note"><span class="pitch-note" id="pitchNote">E</span><span class="pitch-octave" id="pitchOctave">2</span></div>
+        <div class="meter" id="meter" aria-hidden="true">
+          <div class="meter-track"><div class="in-tune-zone"></div><div class="meter-ticks" id="meterTicks"></div><div class="meter-needle" id="meterNeedle"><span></span></div></div>
+          <div class="meter-labels"><span>−50</span><span>0</span><span>+50</span></div>
+        </div>
+        <div class="pitch-readout"><strong id="pitchInstruction">Ready when you are</strong><span><span id="pitchFrequency">— Hz</span><span aria-hidden="true"> · </span><span id="pitchCents">— cents</span></span></div>
+        <div class="signal-track" aria-hidden="true"><span id="signalLevel"></span></div>
+        <div class="primary-actions">
+          <button class="primary-button" id="microphoneButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg><span>Start tuning</span></button>
+          <button class="secondary-button" id="toneButton" type="button" aria-label="Play reference tone E2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6.5 9H3v6h3.5L11 19V5ZM15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg><span>Hear E2</span></button>
+        </div>
+      </section>
+
+      <section class="strings-card" aria-labelledby="stringsHeading">
+        <div class="section-heading"><div><span class="eyebrow">Current tuning</span><h2 id="stringsHeading">Strings</h2></div><button class="mode-button" id="modeButton" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h3M17 12h3M7 7l2 2M15 15l2 2M7 17l2-2M15 9l2-2"/><circle cx="12" cy="12" r="3"/></svg><span>Auto</span></button></div>
+        <div class="string-grid" id="stringsContainer" style="--string-count: 6"></div>
+        <div class="progress-row"><span id="tunedProgress">0 of 6 strings tuned</span><button class="text-button" id="resetProgressButton" type="button" hidden>Reset</button></div>
+      </section>
+    </main>
+    <footer class="app-footer"><span>Audio stays on this device.</span><span aria-hidden="true">•</span><span>Works offline.</span></footer>
+  </div>
+
+  <dialog class="sheet" id="tuningDialog" aria-labelledby="tuningDialogTitle">
+    <div class="sheet-header"><div><span class="eyebrow" id="tuningInstrumentLabel">Guitar</span><h2 id="tuningDialogTitle">Choose a tuning</h2></div><button class="icon-button close-dialog" type="button" aria-label="Close tuning chooser"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+    <div class="tuning-list" id="tuningList"></div>
+    <button class="secondary-button full-width" id="newCustomTuningButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Create custom tuning</span></button>
+  </dialog>
+
+  <dialog class="sheet" id="customTuningDialog" aria-labelledby="customTuningTitle">
+    <form id="customTuningForm">
+      <div class="sheet-header"><div><span class="eyebrow" id="customInstrumentLabel">Guitar · 6 strings</span><h2 id="customTuningTitle">Custom tuning</h2></div><button class="icon-button close-dialog" type="button" aria-label="Close custom tuning editor"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+      <label class="field-label" for="customTuningName">Name</label><input class="text-input" id="customTuningName" name="name" maxlength="36" required placeholder="My tuning" autocomplete="off">
+      <div class="custom-string-list" id="customStringRows"></div>
+      <div class="dialog-actions"><button class="secondary-button close-dialog" type="button"><span>Cancel</span></button><button class="primary-button" type="submit"><span>Save tuning</span></button></div>
+    </form>
+  </dialog>
+
+  <dialog class="sheet settings-sheet" id="settingsDialog" aria-labelledby="settingsDialogTitle">
+    <div class="sheet-header"><div><span class="eyebrow">Preferences</span><h2 id="settingsDialogTitle">Settings</h2></div><button class="icon-button close-dialog" type="button" aria-label="Close settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+    <section class="settings-section" aria-labelledby="calibrationHeading">
+      <div class="setting-title-row"><div><h3 id="calibrationHeading">Concert pitch</h3><p>Reference frequency for A4</p></div><output id="referencePitchValue" for="referencePitch">440 Hz</output></div>
+      <div class="range-with-steps"><button class="step-button" id="referenceDown" type="button" aria-label="Decrease concert pitch">−</button><input id="referencePitch" type="range" min="430" max="450" step="1" value="440"><button class="step-button" id="referenceUp" type="button" aria-label="Increase concert pitch">+</button></div>
+    </section>
+    <section class="settings-section" aria-labelledby="sensitivityHeading"><div class="setting-title-row"><div><h3 id="sensitivityHeading">Microphone sensitivity</h3><p>Raise it for quiet instruments</p></div><output id="sensitivityValue" for="sensitivity">Normal</output></div><input id="sensitivity" type="range" min="0" max="100" step="1" value="55"></section>
+    <section class="settings-section" aria-labelledby="spellingHeading"><div class="setting-title-row"><div><h3 id="spellingHeading">Note spelling</h3><p>How accidentals are shown</p></div></div><div class="segmented-control compact" id="accidentalSwitch" aria-label="Note spelling"><button type="button" data-value="auto">Auto</button><button type="button" data-value="sharps">Sharps</button><button type="button" data-value="flats">Flats</button></div></section>
+    <section class="settings-section" aria-labelledby="appearanceHeading"><div class="setting-title-row"><div><h3 id="appearanceHeading">Appearance</h3><p>Use system, light, or dark mode</p></div></div><div class="segmented-control compact" id="themeSwitch" aria-label="Appearance"><button type="button" data-value="system">System</button><button type="button" data-value="light">Light</button><button type="button" data-value="dark">Dark</button></div></section>
+    <section class="settings-section switch-list" aria-label="Behavior">
+      <label class="switch-row"><span><strong>Haptic confirmation</strong><small>Vibrate when a string is stable and in tune</small></span><input id="vibrationToggle" type="checkbox" role="switch"></label>
+      <label class="switch-row"><span><strong>Keep screen awake</strong><small>While the microphone is listening</small></span><input id="wakeLockToggle" type="checkbox" role="switch"></label>
+    </section>
+    <button class="secondary-button full-width" id="installAppButton" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg><span>Install Fretline</span></button>
+    <button class="text-button reset-settings" id="resetSettingsButton" type="button">Reset preferences</button>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="./src/boot.js"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "name": "Fretline Guitar & Ukulele Tuner",
+  "short_name": "Fretline",
+  "description": "A precise, private guitar and ukulele tuner that works offline.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f5ef",
+  "theme_color": "#f4f5ef",
+  "categories": ["music", "utilities"],
+  "icons": [
+    {
+      "src": "./assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

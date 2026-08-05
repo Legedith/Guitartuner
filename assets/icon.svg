@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Fretline tuner icon">
+  <rect width="512" height="512" rx="116" fill="#171b16"/>
+  <path d="M112 292a144 144 0 0 1 288 0" fill="none" stroke="#f2f4ed" stroke-width="30" stroke-linecap="round"/>
+  <path d="M256 134v42M157 177l29 35M355 177l-29 35" fill="none" stroke="#f2f4ed" stroke-width="22" stroke-linecap="round"/>
+  <path d="m256 292 83-78" fill="none" stroke="#91b497" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="256" cy="292" r="34" fill="#91b497"/>
+  <path d="M158 361h196" fill="none" stroke="#f2f4ed" stroke-width="22" stroke-linecap="round" opacity=".92"/>
+  <path d="M196 361v38M226 361v38M256 361v38M286 361v38M316 361v38" fill="none" stroke="#91b497" stroke-width="12" stroke-linecap="round"/>
+</svg>
