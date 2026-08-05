@@ -13,8 +13,9 @@ const cases = {
 for (const [instrument, midiNotes] of Object.entries(cases)) {
   for (const midi of midiNotes) {
     const frequency = midiToFrequency(midi);
+    const seed = (midi * 4099) + (instrument === 'ukulele' ? 17 : 0);
     test(`${instrument} reference MIDI ${midi} stays within three cents`, () => {
-      const samples = generatePluckedStringSamples({ frequency, instrument, sampleRate, seed: 42 });
+      const samples = generatePluckedStringSamples({ frequency, instrument, sampleRate, seed });
       const frameStart = Math.round(sampleRate * 0.09);
       const frame = samples.slice(frameStart, frameStart + 8192);
       const result = detectPitchYIN(frame, sampleRate, { minFrequency: frequency * 0.65, maxFrequency: frequency * 1.55, minClarity: 0.55, minRms: 0.001 });
@@ -25,7 +26,7 @@ for (const [instrument, midiNotes] of Object.entries(cases)) {
   }
 }
 
-test('reference generation is deterministic for a cached pluck variant', () => {
+test('reference generation is deterministic for caching', () => {
   const first = generatePluckedStringSamples({ frequency: 110, instrument: 'guitar', sampleRate, seed: 9 });
   const second = generatePluckedStringSamples({ frequency: 110, instrument: 'guitar', sampleRate, seed: 9 });
   assert.deepEqual(first.slice(0, 256), second.slice(0, 256));
