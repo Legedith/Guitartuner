@@ -12,7 +12,12 @@ on:
       - scripts/index-chords.py
       - scripts/index-composition-chords.py
       - src/data/playlist-catalog.json
+      - src/app-parts/10-chord-catalog.js
+      - src/app-parts/11-composition-matches.js
+      - src/boot.js
+      - service-worker.js
       - tests/chords.test.mjs
+      - tests/chord-catalog.test.mjs
       - tests/test_composition_matcher.py
   workflow_dispatch:
   schedule:
@@ -51,7 +56,6 @@ jobs:
         with:
           path: /tmp/fretline-chord-sources
           key: fretline-chord-sources-v1
-          save-always: true
 
       - name: Install catalog tools
         run: |
