@@ -35,10 +35,10 @@ function removeOldReferenceBuffer() {
   if (referenceBufferCache.size < 24) return;
   const oldestKey = referenceBufferCache.keys().next().value; referenceBufferCache.delete(oldestKey);
 }
-function getReferenceBuffer(context, target, variant, instrument) {
-  const key = `${instrument}:${context.sampleRate}:${target.frequency.toFixed(5)}:${variant}`;
+function getReferenceBuffer(context, target, instrument) {
+  const key = `${instrument}:${context.sampleRate}:${target.frequency.toFixed(5)}`;
   const cached = referenceBufferCache.get(key); if (cached) return cached;
-  const samples = generatePluckedStringSamples({ frequency: target.frequency, instrument, sampleRate: context.sampleRate, seed: (target.midi * 4099) + (variant * 7919) + (instrument === 'ukulele' ? 17 : 0) });
+  const samples = generatePluckedStringSamples({ frequency: target.frequency, instrument, sampleRate: context.sampleRate, seed: (target.midi * 4099) + (instrument === 'ukulele' ? 17 : 0) });
   if (!samples.length) throw new Error('Reference string could not be generated.');
   const buffer = context.createBuffer(1, samples.length, context.sampleRate); buffer.copyToChannel(samples, 0); removeOldReferenceBuffer(); referenceBufferCache.set(key, buffer); return buffer;
 }
@@ -68,7 +68,7 @@ async function playReferenceString() {
   const instrument = settings.instrument; stopReferenceTone({ updateDisplay: false }); const playId = referenceTonePlayId;
   try {
     const context = await ensureReferenceContext(); if (playId !== referenceTonePlayId || instrument !== settings.instrument) return;
-    const profile = referenceProfile(instrument); const variant = referencePluckCounter % 3; referencePluckCounter += 1; const buffer = getReferenceBuffer(context, target, variant, instrument); const now = context.currentTime; const source = context.createBufferSource(); const highpass = context.createBiquadFilter(); const lowpass = context.createBiquadFilter(); const body = context.createBiquadFilter(); const master = context.createGain(); const compressor = context.createDynamicsCompressor();
+    const profile = referenceProfile(instrument); const buffer = getReferenceBuffer(context, target, instrument); const now = context.currentTime; const source = context.createBufferSource(); const highpass = context.createBiquadFilter(); const lowpass = context.createBiquadFilter(); const body = context.createBiquadFilter(); const master = context.createGain(); const compressor = context.createDynamicsCompressor();
     source.buffer = buffer; highpass.type = 'highpass'; highpass.frequency.value = profile.highpass; highpass.Q.value = .55; lowpass.type = 'lowpass'; lowpass.frequency.value = profile.lowpass; lowpass.Q.value = .68; body.type = 'peaking'; body.frequency.value = instrument === 'ukulele' ? 370 : 210; body.Q.value = .9; body.gain.value = instrument === 'ukulele' ? 1.6 : 1.9;
     master.gain.setValueAtTime(.0001, now); master.gain.exponentialRampToValueAtTime(.78, now + .008); master.gain.setValueAtTime(.78, Math.max(now + .01, now + buffer.duration - .09)); master.gain.exponentialRampToValueAtTime(.0001, now + buffer.duration);
     compressor.threshold.value = -16; compressor.knee.value = 16; compressor.ratio.value = 2.4; compressor.attack.value = .003; compressor.release.value = .16;
