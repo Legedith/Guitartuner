@@ -1,0 +1,24 @@
+.minimal-library{width:min(calc(100% - 28px),760px)}
+.minimal-library .sheet-header{margin-bottom:12px}
+.minimal-library .minimal-library-toolbar{display:block;margin:0 0 10px}
+.minimal-library .search-field{height:44px;border-radius:13px;background:var(--surface)}
+.minimal-library .song-list{display:grid;gap:0;border-top:1px solid var(--border)}
+.minimal-library .minimal-song-row{grid-template-columns:68px minmax(0,1fr);min-height:64px;gap:12px;padding:9px 2px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent}
+.minimal-library .minimal-song-row:hover{background:var(--surface-subtle)}
+.minimal-library .song-thumbnail{width:68px;border-radius:9px}
+.minimal-library .song-copy{gap:3px}
+.minimal-library .song-copy strong{font-size:.84rem}
+.minimal-library .song-copy span{font-size:.69rem}
+.minimal-library .song-scroll-sentinel{display:block;height:1px}
+.minimal-library .library-empty{min-height:140px;padding:20px;color:var(--muted)}
+.minimal-library .youtube-player-shell{margin-bottom:12px}
+.minimal-library .song-heading{align-items:center;margin-bottom:10px}
+.minimal-library .minimal-external-link{display:grid;flex:0 0 auto;width:38px;height:38px;padding:0;place-items:center;border:1px solid var(--border);border-radius:11px;background:var(--surface-subtle);color:var(--muted);text-decoration:none}
+.minimal-library .minimal-external-link:hover{border-color:var(--border-strong);color:var(--text)}
+.minimal-library .minimal-external-link svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.minimal-library .play-along-card{min-height:215px;padding:14px 0;border:0;border-radius:0;background:transparent}
+.minimal-library .play-along-diagram{background:var(--surface-subtle)}
+.minimal-library .current-chord-copy .eyebrow:empty{display:none}
+.minimal-library .back-button{margin-bottom:9px}
+.catalog-attribution,.catalog-chart-note,.playlist-import,.library-summary,.library-status,.play-along-actions,.no-chart{display:none!important}
+@media(max-width:480px){.minimal-library{width:100%}.minimal-library .minimal-song-row{grid-template-columns:62px minmax(0,1fr);min-height:59px}.minimal-library .song-thumbnail{width:62px}.minimal-library .play-along-card{padding:10px 0}.minimal-library .song-heading h3{font-size:1.04rem}}
