@@ -1,0 +1,121 @@
+name: Build best-effort chord catalog
+
+on:
+  push:
+    branches:
+      - main
+      - agent/best-effort-chord-catalog
+    paths:
+      - .github/workflows/index-chords.yml
+      - scripts/index-chords.py
+      - src/data/playlist-catalog.json
+      - src/chords.js
+      - src/song-library.js
+  workflow_dispatch:
+  schedule:
+    - cron: '43 5 2 * *'
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: chord-catalog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Restore source-data cache
+        uses: actions/cache@v5
+        with:
+          path: /tmp/fretline-chord-sources
+          key: fretline-chord-sources-v1
+
+      - name: Install catalog tools
+        run: |
+          python -m pip install --disable-pip-version-check --upgrade \
+            duckdb rapidfuzz Unidecode 'huggingface_hub[hf_xet]'
+
+      - name: Download licensed chord and Spotify metadata
+        env:
+          HF_HUB_DISABLE_PROGRESS_BARS: '1'
+        run: |
+          mkdir -p /tmp/fretline-chord-sources/chordonomicon /tmp/fretline-chord-sources/spotify
+          if [ ! -s /tmp/fretline-chord-sources/chordonomicon/chordonomicon_v2.csv ]; then
+            hf download ailsntua/Chordonomicon chordonomicon_v2.csv \
+              --repo-type dataset \
+              --local-dir /tmp/fretline-chord-sources/chordonomicon
+          fi
+          if [ ! -s /tmp/fretline-chord-sources/spotify/spotify-huge-audio-features.parquet ]; then
+            hf download GildasLeDrogoff/spotify-huge-track-analysis-dataset \
+              spotify-huge-audio-features.parquet \
+              --repo-type dataset \
+              --local-dir /tmp/fretline-chord-sources/spotify
+          fi
+
+      - name: Match playlist recordings and build chord maps
+        run: |
+          python scripts/index-chords.py \
+            --playlist src/data/playlist-catalog.json \
+            --chordonomicon /tmp/fretline-chord-sources/chordonomicon/chordonomicon_v2.csv \
+            --spotify-metadata /tmp/fretline-chord-sources/spotify/spotify-huge-audio-features.parquet \
+            --metadata-cache /tmp/fretline-chord-sources/chord-metadata.parquet \
+            --output src/data/chord-catalog.json \
+            --report src/data/chord-match-report.json \
+            --reuse-metadata-cache
+
+      - name: Enforce meaningful coverage
+        run: |
+          python - <<'PY'
+          import json
+          catalog = json.load(open('src/data/chord-catalog.json', encoding='utf-8'))
+          stats = catalog['stats']
+          print(json.dumps(stats, indent=2))
+          if stats['chartedUniqueVideos'] < 100:
+              raise SystemExit('Fewer than 100 high-enough-confidence charts were matched; refusing to publish.')
+          PY
+
+      - name: Validate generated application
+        run: |
+          npm test
+          npm run check
+
+      - name: Commit refreshed chord catalog
+        id: commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/data/chord-catalog.json src/data/chord-match-report.json
+          if git diff --cached --quiet; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            git commit -m 'Refresh best-effort chord catalog'
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish scheduled main refresh
+        if: steps.commit.outputs.changed == 'true' && github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git push origin HEAD:gh-pages
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/pages/builds"
