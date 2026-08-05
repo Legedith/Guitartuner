@@ -156,15 +156,31 @@ class CompositionMatcherTests(unittest.TestCase):
 
 class LyricFingerprintTests(unittest.TestCase):
     def test_repeated_or_missing_sections_still_verify(self):
-        left = """First light over the river\nWe walk the old road home\nFirst light over the river\nWe walk the old road home\nThe morning knows our names"""
-        right = """First light over the river\nWe walk the old road home\nThe morning knows our names"""
+        left = """First light is falling slowly over the river tonight
+We walk together down the old familiar road home
+First light is falling slowly over the river tonight
+We walk together down the old familiar road home
+The morning remembers every one of our names
+Carry the memory wherever the long road may go"""
+        right = """First light is falling slowly over the river tonight
+We walk together down the old familiar road home
+The morning remembers every one of our names
+Carry the memory wherever the long road may go"""
         metrics = LYRICS.lyric_similarity(left, right)
         self.assertEqual(LYRICS.similarity_status(metrics), "verified")
         self.assertGreater(metrics["containment"], 0.7)
 
     def test_unrelated_lyrics_conflict(self):
-        left = """First light over the river\nWe walk the old road home\nThe morning knows our names\nCarry every memory"""
-        right = """Neon wheels across the city\nMidnight engines never sleep\nPaper stars are falling quickly\nCount the secrets that we keep"""
+        left = """First light is falling slowly over the river tonight
+We walk together down the old familiar road home
+The morning remembers every one of our names
+Carry the memory wherever the long road may go
+Hold every promise close when the winter wind arrives"""
+        right = """Neon wheels are racing through the crowded city
+Midnight engines never stop or fall asleep
+Paper stars are breaking over empty rooftops
+Count the hidden secrets that the shadows keep
+Chrome reflections flicker underneath the traffic lights"""
         metrics = LYRICS.lyric_similarity(left, right)
         self.assertEqual(LYRICS.similarity_status(metrics), "conflict")
 
