@@ -1,11 +1,7 @@
+const SONG_BATCH_SIZE = 100;
 let youtubeApiPromise = null;
 let youtubePlayer = null;
 let youtubePlayerReady = false;
-let loadedPlaylistId = null;
-let playlistSyncTimer = 0;
-let playlistSyncAttempts = 0;
-let libraryIndexing = false;
-let libraryIndexToken = 0;
 let selectedSong = null;
 let editingSongVideoId = null;
 let playAlongTimer = 0;
@@ -16,12 +12,16 @@ let loopStart = null;
 let loopEnd = null;
 let loopEnabled = false;
 let seekDragging = false;
+let bundledPlaylistCatalog = null;
+let filteredSongTracks = [];
+let renderedSongCount = 0;
+let songLoadMoreButton = null;
+let songListObserver = null;
 
 function youtubeState() { try { return youtubePlayer?.getPlayerState?.() ?? -1; } catch (_) { return -1; } }
 function currentPlayerTime() { try { return Math.max(0, youtubePlayer?.getCurrentTime?.() || 0); } catch (_) { return 0; } }
 function currentPlayerDuration() { try { return Math.max(0, youtubePlayer?.getDuration?.() || 0); } catch (_) { return 0; } }
 function videoUrlForSong(song = selectedSong) { return song?.videoId ? youtubeVideoUrl(song.videoId) : '#'; }
-function delay(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }
 
 function loadYouTubeIframeApi() {
   if (globalThis.YT?.Player) return Promise.resolve(globalThis.YT);
@@ -50,7 +50,7 @@ function waitForYouTubePlayerReady(timeout = 12000) {
 }
 
 function youtubeErrorMessage(code) {
-  if (code === 2) return 'YouTube rejected this playlist or video link.';
+  if (code === 2) return 'YouTube rejected this video link.';
   if (code === 5) return 'This song cannot play in the HTML5 player.';
   if (code === 100) return 'This song is private, removed, or unavailable.';
   if (code === 101 || code === 150) return 'The owner has disabled embedded playback for this song.';
@@ -64,88 +64,60 @@ function updatePlayButton() {
 }
 
 function captureCurrentMetadata() {
-  if (!youtubePlayerReady || !youtubePlayer) return null;
+  if (!youtubePlayerReady || !youtubePlayer || !selectedSong) return null;
   let data = {};
   try { data = youtubePlayer.getVideoData?.() ?? {}; } catch (_) { data = {}; }
-  let videoId = extractYouTubeVideoId(data.video_id);
-  let index = -1;
-  try { index = youtubePlayer.getPlaylistIndex?.() ?? -1; } catch (_) { index = -1; }
-  if (!videoId && index >= 0) videoId = settings.playlistTracks[index]?.videoId ?? null;
-  if (!videoId) return null;
-  let track = settings.playlistTracks.find((item) => item.videoId === videoId);
-  if (!track) {
-    track = { videoId, index: index >= 0 ? index : settings.playlistTracks.length, title: '', artist: '', duration: 0, thumbnail: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` };
-    settings.playlistTracks.push(track);
-  }
+  const videoId = extractYouTubeVideoId(data.video_id);
+  if (videoId && videoId !== selectedSong.videoId) return null;
+  const trackIndex = settings.playlistTracks.findIndex((track) => track.catalogId === selectedSong.catalogId);
+  if (trackIndex < 0) return null;
+  const track = settings.playlistTracks[trackIndex];
   const title = typeof data.title === 'string' ? data.title.trim() : '';
-  const artist = typeof data.author === 'string' ? data.author.trim() : '';
+  const artist = typeof data.author === 'string' ? data.author.replace(/\s+-\s+Topic$/i, '').trim() : '';
   const duration = currentPlayerDuration();
   let changed = false;
-  if (title && title !== track.title) { track.title = title.slice(0, 160); changed = true; }
-  if (artist && artist !== track.artist) { track.artist = artist.slice(0, 120); changed = true; }
+  if (title && (!track.title || /^Track \d+$/.test(track.title))) { track.title = title.slice(0, 200); changed = true; }
+  if (artist && !track.artist) { track.artist = artist.slice(0, 160); changed = true; }
   if (duration > 0 && Math.abs(duration - track.duration) > .5) { track.duration = duration; changed = true; }
-  if (index >= 0 && track.index !== index) { track.index = index; changed = true; }
-  if (changed) { settings.playlistTracks = sanitizePlaylistTracks(settings.playlistTracks); saveSettings(); renderLibrarySummary(); renderSongList(); }
-  if (selectedSong?.videoId === track.videoId) {
-    selectedSong = track; dom.playAlongTitle.textContent = track.title || `Track ${track.index + 1}`; dom.playAlongArtist.textContent = track.artist || 'YouTube playlist'; dom.playAlongDuration.textContent = formatTime(duration || track.duration);
-  }
+  if (changed) { saveSettings(); renderLibrarySummary(); }
+  selectedSong = track;
+  dom.playAlongTitle.textContent = trackDisplayTitle(track); dom.playAlongArtist.textContent = trackDisplayArtist(track); dom.playAlongDuration.textContent = formatTime(duration || track.duration);
   return track;
 }
 
-function syncPlaylistFromPlayer() {
-  clearTimeout(playlistSyncTimer);
-  if (!youtubePlayerReady || !youtubePlayer) return;
-  let videoIds = [];
-  try { videoIds = youtubePlayer.getPlaylist?.() ?? []; } catch (_) { videoIds = []; }
-  videoIds = videoIds.map(extractYouTubeVideoId).filter(Boolean);
-  if (!videoIds.length && playlistSyncAttempts < 20) {
-    playlistSyncAttempts += 1; playlistSyncTimer = setTimeout(syncPlaylistFromPlayer, 350); return;
-  }
-  playlistSyncAttempts = 0;
-  if (!videoIds.length) { dom.libraryStatus.textContent = 'This playlist is empty, private, or unavailable for embedding.'; return; }
-  const existing = new Map(settings.playlistTracks.map((track) => [track.videoId, track]));
-  settings.playlistTracks = sanitizePlaylistTracks(videoIds.map((videoId, index) => ({ ...existing.get(videoId), videoId, index })));
-  saveSettings(); renderLibrarySummary(); renderSongList(); captureCurrentMetadata(); dom.indexPlaylistButton.disabled = false;
-  dom.libraryStatus.textContent = `${videoIds.length} songs loaded. Titles appear as songs are opened, or use Read titles.`;
-}
-
 function onYouTubePlayerReady() {
-  youtubePlayerReady = true; dom.indexPlaylistButton.disabled = false;
-  if (loadedPlaylistId) youtubePlayer.cuePlaylist({ listType: 'playlist', list: loadedPlaylistId, index: 0, startSeconds: 0 });
-  playlistSyncAttempts = 0; syncPlaylistFromPlayer(); updatePlayButton(); startPlayAlongTicker();
+  youtubePlayerReady = true; updatePlayButton(); startPlayAlongTicker();
 }
 
-function onYouTubeStateChange(event) {
-  updatePlayButton();
-  if (event.data === globalThis.YT?.PlayerState?.CUED || event.data === globalThis.YT?.PlayerState?.PLAYING || event.data === globalThis.YT?.PlayerState?.PAUSED) {
-    syncPlaylistFromPlayer(); setTimeout(captureCurrentMetadata, 180);
+function onYouTubeStateChange() {
+  updatePlayButton(); setTimeout(captureCurrentMetadata, 160);
+}
+
+async function ensureYouTubePlayer(videoId) {
+  await loadYouTubeIframeApi(); dom.youtubePlayerShell.hidden = false;
+  if (!youtubePlayer) {
+    youtubePlayer = new globalThis.YT.Player('youtubePlayer', {
+      width: '100%', height: '100%', videoId,
+      host: 'https://www.youtube-nocookie.com',
+      playerVars: { playsinline: 1, rel: 0, modestbranding: 1, origin: location.origin },
+      events: {
+        onReady: onYouTubePlayerReady,
+        onStateChange: onYouTubeStateChange,
+        onError: (event) => { const message = youtubeErrorMessage(event.data); dom.libraryStatus.textContent = message; showToast(message, 3800); },
+      },
+    });
   }
+  await waitForYouTubePlayerReady();
 }
 
-async function ensureYouTubePlayer(playlistId) {
-  await loadYouTubeIframeApi(); loadedPlaylistId = playlistId; dom.youtubePlayerShell.hidden = false;
-  if (youtubePlayer) {
-    youtubePlayer.cuePlaylist({ listType: 'playlist', list: playlistId, index: 0, startSeconds: 0 }); playlistSyncAttempts = 0; syncPlaylistFromPlayer(); return;
-  }
-  youtubePlayer = new globalThis.YT.Player('youtubePlayer', {
-    width: '100%', height: '100%', host: 'https://www.youtube-nocookie.com',
-    playerVars: { playsinline: 1, rel: 0, modestbranding: 1, origin: location.origin },
-    events: {
-      onReady: onYouTubePlayerReady,
-      onStateChange: onYouTubeStateChange,
-      onError: (event) => { dom.libraryStatus.textContent = youtubeErrorMessage(event.data); showToast(youtubeErrorMessage(event.data), 3800); },
-    },
-  });
-}
-
-async function loadPlaylist(event) {
-  event?.preventDefault(); const playlistId = extractYouTubePlaylistId(dom.playlistUrl.value);
-  if (!playlistId) { showToast('Paste a valid YouTube or YouTube Music playlist link.'); return; }
-  settings.playlistUrl = dom.playlistUrl.value.trim(); settings.playlistTracks = loadedPlaylistId === playlistId ? settings.playlistTracks : []; saveSettings(); renderSongList(); renderLibrarySummary();
-  dom.loadPlaylistButton.disabled = true; dom.libraryStatus.textContent = 'Loading YouTube playlist…';
-  try { await ensureYouTubePlayer(playlistId); await waitForYouTubePlayerReady(); playlistSyncAttempts = 0; syncPlaylistFromPlayer(); dom.libraryStatus.textContent = 'Playlist connected. Reading its song list…'; }
-  catch (error) { dom.libraryStatus.textContent = error.message; showToast(error.message, 4200); }
-  finally { dom.loadPlaylistButton.disabled = false; }
+function catalogStatusMessage() {
+  const count = settings.playlistTracks.length;
+  if (!count) return 'The bundled playlist catalog is not available.';
+  const formattedCount = count.toLocaleString();
+  const date = bundledPlaylistCatalog?.generatedAt ? new Date(bundledPlaylistCatalog.generatedAt) : null;
+  const dateText = date && !Number.isNaN(date.valueOf()) ? ` · indexed ${date.toLocaleDateString()}` : '';
+  const skipped = bundledPlaylistCatalog?.skippedEntries ? ` · ${bundledPlaylistCatalog.skippedEntries} unavailable entries skipped` : '';
+  return `${formattedCount} playlist entries are included with Fretline${dateText}${skipped}. Select a song to connect YouTube playback.`;
 }
 
 function renderLibrarySummary() {
@@ -153,51 +125,71 @@ function renderLibrarySummary() {
   dom.librarySummary.hidden = summary.trackCount === 0; dom.librarySummary.replaceChildren();
   if (!summary.trackCount) return;
   const stats = [
-    [String(summary.trackCount), 'songs'],
-    [String(summary.charted), 'with chord maps'],
+    [summary.trackCount.toLocaleString(), 'indexed playlist entries'],
+    [summary.charted.toLocaleString(), 'with chord maps'],
     [summary.totalDuration ? formatTime(summary.totalDuration, true) : '—', 'total play time'],
-    [summary.topArtists[0]?.name || '—', summary.topArtists[0] ? `${summary.topArtists[0].count} songs · top artist` : 'artist mix appears after titles are read'],
+    [summary.topArtists[0]?.name || '—', summary.topArtists[0] ? `${summary.topArtists[0].count} entries · top artist` : 'artist mix'],
   ];
   for (const [value, label] of stats) { const item = document.createElement('div'); item.className = 'summary-stat'; const strong = document.createElement('strong'); strong.textContent = value; const span = document.createElement('span'); span.textContent = label; item.append(strong, span); dom.librarySummary.append(item); }
 }
 
 function trackDisplayTitle(track) { return track.title || settings.songCharts[track.videoId]?.title || `Track ${track.index + 1}`; }
-function trackDisplayArtist(track) { return track.artist || settings.songCharts[track.videoId]?.artist || 'YouTube playlist'; }
+function trackDisplayArtist(track) { return track.artist || settings.songCharts[track.videoId]?.artist || 'YouTube Music'; }
 
-function renderSongList() {
-  const query = dom.songSearch.value.trim().toLowerCase(); const tracks = settings.playlistTracks.filter((track) => `${trackDisplayTitle(track)} ${trackDisplayArtist(track)}`.toLowerCase().includes(query));
-  dom.songList.replaceChildren(); dom.libraryEmpty.hidden = settings.playlistTracks.length > 0;
-  if (!settings.playlistTracks.length) { dom.libraryEmpty.querySelector('strong').textContent = 'No songs loaded'; return; }
-  if (!tracks.length) { dom.libraryEmpty.hidden = false; dom.libraryEmpty.querySelector('strong').textContent = 'No matching songs'; return; }
-  for (const track of tracks) {
-    const chart = settings.songCharts[track.videoId]; const button = document.createElement('button'); button.type = 'button'; button.className = 'song-row'; button.dataset.videoId = track.videoId;
-    const thumbnail = document.createElement('span'); thumbnail.className = 'song-thumbnail'; const image = document.createElement('img'); image.src = track.thumbnail; image.alt = ''; image.loading = 'lazy'; image.referrerPolicy = 'no-referrer'; thumbnail.append(image); if (track.duration) { const duration = document.createElement('span'); duration.textContent = formatTime(track.duration); thumbnail.append(duration); }
-    const copy = document.createElement('span'); copy.className = 'song-copy'; const title = document.createElement('strong'); title.textContent = trackDisplayTitle(track); const artist = document.createElement('span'); artist.textContent = trackDisplayArtist(track); copy.append(title, artist);
-    const status = document.createElement('span'); status.className = 'song-status'; const index = document.createElement('span'); index.className = 'song-index'; index.textContent = `#${track.index + 1}`; status.append(index); if (chart?.events?.length) { const badge = document.createElement('span'); badge.className = 'charted-badge'; badge.textContent = `${chart.events.length} changes`; status.append(badge); }
-    button.append(thumbnail, copy, status); dom.songList.append(button);
+function createSongRow(track) {
+  const chart = settings.songCharts[track.videoId]; const button = document.createElement('button'); button.type = 'button'; button.className = 'song-row'; button.dataset.catalogId = track.catalogId;
+  const thumbnail = document.createElement('span'); thumbnail.className = 'song-thumbnail'; const image = document.createElement('img'); image.src = track.thumbnail; image.alt = ''; image.loading = 'lazy'; image.decoding = 'async'; image.referrerPolicy = 'no-referrer'; thumbnail.append(image); if (track.duration) { const duration = document.createElement('span'); duration.textContent = formatTime(track.duration); thumbnail.append(duration); }
+  const copy = document.createElement('span'); copy.className = 'song-copy'; const title = document.createElement('strong'); title.textContent = trackDisplayTitle(track); const artist = document.createElement('span'); artist.textContent = trackDisplayArtist(track); copy.append(title, artist);
+  const status = document.createElement('span'); status.className = 'song-status'; const index = document.createElement('span'); index.className = 'song-index'; index.textContent = `#${track.index + 1}`; status.append(index); if (chart?.events?.length) { const badge = document.createElement('span'); badge.className = 'charted-badge'; badge.textContent = `${chart.events.length} changes`; status.append(badge); }
+  button.append(thumbnail, copy, status); return button;
+}
+
+function disconnectSongListObserver() {
+  songListObserver?.disconnect(); songListObserver = null; songLoadMoreButton = null;
+}
+
+function appendSongBatch() {
+  songLoadMoreButton?.remove(); songLoadMoreButton = null;
+  const end = Math.min(filteredSongTracks.length, renderedSongCount + SONG_BATCH_SIZE);
+  const fragment = document.createDocumentFragment();
+  for (let index = renderedSongCount; index < end; index += 1) fragment.append(createSongRow(filteredSongTracks[index]));
+  dom.songList.append(fragment); renderedSongCount = end;
+  if (renderedSongCount >= filteredSongTracks.length) return;
+  const button = document.createElement('button'); button.type = 'button'; button.className = 'small-action-button full-width'; button.textContent = `Showing ${renderedSongCount.toLocaleString()} of ${filteredSongTracks.length.toLocaleString()} · continue scrolling`;
+  button.addEventListener('click', appendSongBatch); dom.songList.append(button); songLoadMoreButton = button;
+  if ('IntersectionObserver' in window) {
+    songListObserver?.disconnect();
+    songListObserver = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) appendSongBatch(); }, { root: dom.libraryDialog, rootMargin: '300px 0px' });
+    songListObserver.observe(button);
   }
 }
 
-function openSongLibrary() {
-  dom.playlistUrl.value = settings.playlistUrl || DEFAULT_PLAYLIST_URL; dom.libraryListView.hidden = false; dom.playAlongView.hidden = true; renderLibrarySummary(); renderSongList();
-  if (youtubePlayer) dom.youtubePlayerShell.hidden = false;
-  dom.libraryDialog.showModal();
+function renderSongList() {
+  disconnectSongListObserver();
+  const query = dom.songSearch.value.trim().toLowerCase();
+  filteredSongTracks = settings.playlistTracks.filter((track) => `${trackDisplayTitle(track)} ${trackDisplayArtist(track)} ${track.album || ''}`.toLowerCase().includes(query));
+  renderedSongCount = 0; dom.songList.replaceChildren(); dom.libraryEmpty.hidden = filteredSongTracks.length > 0;
+  if (!settings.playlistTracks.length) { dom.libraryEmpty.hidden = false; dom.libraryEmpty.querySelector('strong').textContent = 'Playlist catalog unavailable'; return; }
+  if (!filteredSongTracks.length) { dom.libraryEmpty.hidden = false; dom.libraryEmpty.querySelector('strong').textContent = 'No matching songs'; return; }
+  appendSongBatch();
 }
 
-function songByVideoId(videoId) { return settings.playlistTracks.find((track) => track.videoId === videoId) ?? null; }
+function openSongLibrary() {
+  dom.playlistForm.hidden = true; dom.indexPlaylistButton.hidden = true; dom.libraryListView.hidden = false; dom.playAlongView.hidden = true; dom.youtubePlayerShell.hidden = true;
+  renderLibrarySummary(); renderSongList(); dom.libraryStatus.textContent = catalogStatusMessage(); dom.libraryDialog.showModal();
+}
 
-async function selectSong(videoId, play = true) {
-  const track = songByVideoId(videoId); if (!track) return;
+function songByCatalogId(catalogId) { return settings.playlistTracks.find((track) => track.catalogId === catalogId) ?? null; }
+
+async function selectSong(catalogId, play = true) {
+  const track = songByCatalogId(catalogId); if (!track) return;
   selectedSong = track; playAlongTranspose = 0; activePlayAlongKey = ''; loopStart = null; loopEnd = null; loopEnabled = false; updateLoopControls(); updateTransposeControl();
-  dom.libraryListView.hidden = true; dom.playAlongView.hidden = false; dom.playAlongTitle.textContent = trackDisplayTitle(track); dom.playAlongArtist.textContent = trackDisplayArtist(track); dom.openYouTubeButton.href = youtubeVideoUrl(track.videoId); dom.playAlongDuration.textContent = formatTime(track.duration); dom.playAlongSeek.value = '0';
-  renderPlayAlongAtCurrentTime(true); startPlayAlongTicker();
+  dom.libraryListView.hidden = true; dom.playAlongView.hidden = false; dom.youtubePlayerShell.hidden = false; dom.playAlongTitle.textContent = trackDisplayTitle(track); dom.playAlongArtist.textContent = trackDisplayArtist(track); dom.openYouTubeButton.href = youtubeVideoUrl(track.videoId); dom.playAlongDuration.textContent = formatTime(track.duration); dom.playAlongSeek.value = '0';
+  renderPlayAlongAtCurrentTime(true); startPlayAlongTicker(); dom.libraryStatus.textContent = 'Connecting YouTube playback…';
   try {
-    if (!youtubePlayerReady) {
-      const playlistId = extractYouTubePlaylistId(settings.playlistUrl);
-      if (!playlistId) throw new Error('Load a valid playlist before playing this song.');
-      dom.libraryStatus.textContent = 'Connecting YouTube playback…'; await ensureYouTubePlayer(playlistId); await waitForYouTubePlayerReady();
-    }
-    youtubePlayer.playVideoAt(track.index); if (!play) youtubePlayer.pauseVideo();
+    await ensureYouTubePlayer(track.videoId);
+    if (play) youtubePlayer.loadVideoById({ videoId: track.videoId, startSeconds: 0 }); else youtubePlayer.cueVideoById({ videoId: track.videoId, startSeconds: 0 });
+    dom.libraryStatus.textContent = `${trackDisplayTitle(track)} · playback supplied by YouTube.`;
   } catch (error) { dom.libraryStatus.textContent = error.message; showToast(error.message, 3600); }
 }
 
@@ -206,7 +198,7 @@ function displayedChartEvents() {
   return chart?.events?.length ? transposeChordEvents(chart.events, playAlongTranspose, chordAccidentalMode()) : [];
 }
 
-function renderUpcomingChords(events, activeIndex, time) {
+function renderUpcomingChords(events, activeIndex) {
   dom.upcomingChords.replaceChildren();
   const start = Math.max(0, activeIndex); const end = Math.min(events.length, start + 7);
   for (let index = start; index < end; index += 1) {
@@ -223,13 +215,13 @@ function renderPlayAlongAtCurrentTime(force = false) {
   const events = displayedChartEvents(); const { event, index } = getActiveChordEvent(events, time); const next = events[index + 1] ?? null;
   dom.noChartMessage.hidden = events.length > 0; dom.upcomingChords.hidden = events.length === 0;
   if (!event) {
-    dom.currentSection.textContent = events.length ? 'Get ready' : 'Current chord'; dom.currentChordName.textContent = '—'; dom.nextChordName.textContent = events[0] ? `${events[0].chord} at ${formatTime(events[0].time)}` : 'Add a chord map to start'; dom.playAlongDiagram.replaceChildren(); playAlongCurrentVoicing = null; renderUpcomingChords(events, 0, time); activePlayAlongKey = ''; return;
+    dom.currentSection.textContent = events.length ? 'Get ready' : 'Current chord'; dom.currentChordName.textContent = '—'; dom.nextChordName.textContent = events[0] ? `${events[0].chord} at ${formatTime(events[0].time)}` : 'Add a chord map to start'; dom.playAlongDiagram.replaceChildren(); playAlongCurrentVoicing = null; renderUpcomingChords(events, 0); activePlayAlongKey = ''; return;
   }
   const key = `${selectedSong.videoId}:${index}:${playAlongTranspose}:${settings.instrument}:${currentTuning.id}`;
   dom.currentSection.textContent = event.section || 'Current chord'; dom.currentChordName.textContent = event.chord;
   dom.nextChordName.textContent = next ? `Next ${next.chord} in ${formatTime(Math.max(0, next.time - time))}` : 'Final chord';
   if (force || key !== activePlayAlongKey) { playAlongCurrentVoicing = renderChordDiagramForSymbol(dom.playAlongDiagram, event.chord, { compact: true, limit: 4, tuningMidi: currentTuning.midi }); activePlayAlongKey = key; }
-  renderUpcomingChords(events, index, time);
+  renderUpcomingChords(events, index);
 }
 
 function startPlayAlongTicker() {
@@ -256,7 +248,7 @@ function updateLoopControls() {
 }
 
 async function togglePlayAlong() {
-  if (!youtubePlayerReady) { showToast('Load the playlist first.'); return; }
+  if (!youtubePlayerReady) { showToast('Select a song first.'); return; }
   try { if (globalThis.YT && youtubeState() === globalThis.YT.PlayerState.PLAYING) youtubePlayer.pauseVideo(); else youtubePlayer.playVideo(); } catch (_) {}
   updatePlayButton();
 }
@@ -282,7 +274,7 @@ function saveSongChart(event) {
   if (raw && !events.length) { showToast('No supported chord changes were found. Check the examples below the editor.'); return; }
   if (sourceInput && !sourceUrl) { showToast('The chord source must be an http or https link.'); return; }
   settings.songCharts[editingSongVideoId] = { videoId: editingSongVideoId, title: dom.songChartTitle.value.trim(), artist: dom.songChartArtist.value.trim(), bpm, beatsPerChord, raw, sourceUrl, events, updatedAt: Date.now() };
-  const track = songByVideoId(editingSongVideoId); if (track) { if (settings.songCharts[editingSongVideoId].title) track.title = settings.songCharts[editingSongVideoId].title; if (settings.songCharts[editingSongVideoId].artist) track.artist = settings.songCharts[editingSongVideoId].artist; }
+  const tracks = settings.playlistTracks.filter((track) => track.videoId === editingSongVideoId); for (const track of tracks) { if (settings.songCharts[editingSongVideoId].title) track.title = settings.songCharts[editingSongVideoId].title; if (settings.songCharts[editingSongVideoId].artist) track.artist = settings.songCharts[editingSongVideoId].artist; }
   saveSettings(); dom.songChartDialog.close(); activePlayAlongKey = ''; renderLibrarySummary(); renderSongList(); renderPlayAlongAtCurrentTime(true); showToast(events.length ? `Saved ${events.length} chord changes` : 'Chord map cleared');
 }
 
@@ -290,9 +282,9 @@ async function findSongChords() {
   if (!selectedSong) return; const chart = settings.songCharts[selectedSong.videoId]; const sourceUrl = sanitizeExternalUrl(chart?.sourceUrl);
   if (sourceUrl) { window.open(sourceUrl, '_blank', 'noopener'); return; }
   const chordifyWindow = window.open('https://chordify.net/', '_blank', 'noopener'); const url = videoUrlForSong();
-  try { await navigator.clipboard.writeText(url); showToast('YouTube link copied. Paste it into Chordify, then save the licensed source or enter your chord map here.', 5200); }
-  catch (_) { showToast('Chordify opened. Paste this song’s YouTube link there.', 3600); }
-  if (!chordifyWindow) showToast('Your browser blocked the new tab. Open Chordify and paste this song’s YouTube link.', 4400);
+  try { await navigator.clipboard.writeText(url); showToast('YouTube link copied. Paste it into a licensed chord service, then save its source or import your chart.', 5200); }
+  catch (_) { showToast('A chord service opened. Paste this song’s YouTube link there.', 3600); }
+  if (!chordifyWindow) showToast('Your browser blocked the new tab. Open a licensed chord service and paste this song’s YouTube link.', 4400);
 }
 
 function exportSongCharts() {
@@ -304,64 +296,33 @@ async function importSongCharts(event) {
   const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
   try {
     const payload = JSON.parse(await file.text()); const importedCharts = sanitizeSongCharts(payload.songCharts ?? payload.charts ?? payload); const importedTracks = sanitizePlaylistTracks(payload.playlistTracks ?? []);
-    settings.songCharts = { ...settings.songCharts, ...importedCharts };
-    if (importedTracks.length) { const merged = new Map(settings.playlistTracks.map((track) => [track.videoId, track])); for (const track of importedTracks) merged.set(track.videoId, { ...merged.get(track.videoId), ...track }); settings.playlistTracks = sanitizePlaylistTracks([...merged.values()]); }
-    if (typeof payload.playlistUrl === 'string' && extractYouTubePlaylistId(payload.playlistUrl)) { settings.playlistUrl = payload.playlistUrl; dom.playlistUrl.value = payload.playlistUrl; }
+    settings.songCharts = { ...settings.songCharts, ...importedCharts }; settings.playlistTracks = mergePlaylistTracks(settings.playlistTracks, importedTracks);
     saveSettings(); renderLibrarySummary(); renderSongList(); renderPlayAlongAtCurrentTime(true); showToast(`Imported ${Object.keys(importedCharts).length} chord maps`);
   } catch (_) { showToast('That file is not a valid Fretline chord export.'); }
 }
 
-function waitForTrackMetadata(videoId, timeout = 5200) {
-  return new Promise((resolve) => {
-    const started = performance.now();
-    const poll = () => {
-      const track = captureCurrentMetadata(); if (track?.videoId === videoId && track.title) { resolve(track); return; }
-      if (performance.now() - started >= timeout) { resolve(track ?? null); return; }
-      setTimeout(poll, 220);
-    };
-    poll();
-  });
-}
+function backToLibrary() { try { youtubePlayer?.pauseVideo?.(); } catch (_) {} dom.youtubePlayerShell.hidden = true; dom.playAlongView.hidden = true; dom.libraryListView.hidden = false; selectedSong = null; activePlayAlongKey = ''; stopChordSound(); renderSongList(); dom.libraryStatus.textContent = catalogStatusMessage(); }
 
-async function indexPlaylistTitles() {
-  if (!youtubePlayerReady || !settings.playlistTracks.length) return;
-  if (libraryIndexing) { libraryIndexToken += 1; libraryIndexing = false; dom.indexPlaylistButton.textContent = 'Read titles'; dom.libraryStatus.textContent = 'Stopping title reading…'; return; }
-  libraryIndexing = true; const token = ++libraryIndexToken; dom.indexPlaylistButton.textContent = 'Stop'; const previousIndex = Math.max(0, youtubePlayer.getPlaylistIndex?.() ?? 0); const previousTime = currentPlayerTime(); const wasPlaying = globalThis.YT && youtubeState() === globalThis.YT.PlayerState.PLAYING; let wasMuted = false;
+async function initializeSongLibrary() {
+  dom.playlistForm.hidden = true; dom.indexPlaylistButton.hidden = true; dom.playlistUrl.value = DEFAULT_PLAYLIST_URL; dom.libraryStatus.textContent = 'Loading the bundled playlist catalog…';
+  renderLibrarySummary(); renderSongList(); updateTransposeControl(); updateLoopControls(); startPlayAlongTicker();
   try {
-    wasMuted = youtubePlayer.isMuted?.() ?? false; youtubePlayer.mute();
-    for (let index = 0; index < settings.playlistTracks.length; index += 1) {
-      if (!libraryIndexing || token !== libraryIndexToken) break;
-      const track = settings.playlistTracks[index]; if (track.title && track.duration) continue;
-      dom.libraryStatus.textContent = `Reading titles ${index + 1} of ${settings.playlistTracks.length}…`;
-      youtubePlayer.playVideoAt(index); await delay(220); youtubePlayer.pauseVideo(); await waitForTrackMetadata(track.videoId);
-    }
-  } catch (_) {
-    dom.libraryStatus.textContent = 'Some playlist titles could not be read.';
-  } finally {
-    try {
-      youtubePlayer.playVideoAt(previousIndex); await delay(120); youtubePlayer.seekTo(previousTime, true);
-      if (!wasMuted) youtubePlayer.unMute(); else youtubePlayer.mute();
-      if (wasPlaying && dom.libraryDialog.open) youtubePlayer.playVideo(); else youtubePlayer.pauseVideo();
-    } catch (_) {}
-    const completed = token === libraryIndexToken && libraryIndexing;
-    if (token === libraryIndexToken) libraryIndexing = false;
-    dom.indexPlaylistButton.textContent = 'Read titles'; dom.libraryStatus.textContent = completed ? 'Playlist titles saved in this browser.' : 'Title reading stopped.'; renderSongList(); renderLibrarySummary();
+    bundledPlaylistCatalog = await loadBundledPlaylistCatalog();
+    settings.playlistUrl = bundledPlaylistCatalog.sourceUrl;
+    settings.playlistTracks = mergePlaylistTracks(bundledPlaylistCatalog.tracks, settings.playlistTracks);
+    saveSettings(); renderLibrarySummary(); renderSongList(); dom.libraryStatus.textContent = catalogStatusMessage();
+  } catch (error) {
+    dom.libraryStatus.textContent = settings.playlistTracks.length ? `${settings.playlistTracks.length.toLocaleString()} locally saved entries are available; the bundled catalog could not be refreshed.` : error.message;
   }
 }
 
-function backToLibrary() { try { youtubePlayer?.pauseVideo?.(); } catch (_) {} dom.playAlongView.hidden = true; dom.libraryListView.hidden = false; selectedSong = null; activePlayAlongKey = ''; stopChordSound(); renderSongList(); }
-
-function initializeSongLibrary() {
-  dom.playlistUrl.value = settings.playlistUrl || DEFAULT_PLAYLIST_URL; renderLibrarySummary(); renderSongList(); updateTransposeControl(); updateLoopControls(); startPlayAlongTicker();
-}
-
 function bindLibraryEvents() {
-  dom.libraryButton.addEventListener('click', openSongLibrary); dom.readyLibraryButton.addEventListener('click', openSongLibrary); dom.playlistForm.addEventListener('submit', loadPlaylist); dom.songSearch.addEventListener('input', renderSongList); dom.indexPlaylistButton.addEventListener('click', indexPlaylistTitles); dom.exportChartsButton.addEventListener('click', exportSongCharts); dom.importChartsInput.addEventListener('change', importSongCharts);
-  dom.songList.addEventListener('click', (event) => { const row = event.target.closest('button[data-video-id]'); if (row) selectSong(row.dataset.videoId, true); }); dom.backToLibraryButton.addEventListener('click', backToLibrary);
+  dom.libraryButton.addEventListener('click', openSongLibrary); dom.readyLibraryButton.addEventListener('click', openSongLibrary); dom.playlistForm.addEventListener('submit', (event) => event.preventDefault()); dom.songSearch.addEventListener('input', renderSongList); dom.exportChartsButton.addEventListener('click', exportSongCharts); dom.importChartsInput.addEventListener('change', importSongCharts);
+  dom.songList.addEventListener('click', (event) => { const row = event.target.closest('button[data-catalog-id]'); if (row) selectSong(row.dataset.catalogId, true); }); dom.backToLibraryButton.addEventListener('click', backToLibrary);
   dom.playAlongToggle.addEventListener('click', togglePlayAlong); dom.playAlongSeek.addEventListener('pointerdown', () => { seekDragging = true; }); dom.playAlongSeek.addEventListener('pointerup', () => { seekDragging = false; seekPlayAlong(); }); dom.playAlongSeek.addEventListener('change', () => { seekDragging = false; seekPlayAlong(); });
   dom.playbackRate.addEventListener('change', () => { try { youtubePlayer?.setPlaybackRate?.(Number(dom.playbackRate.value)); } catch (_) {} }); dom.transposeDown.addEventListener('click', () => transposePlayAlong(-1)); dom.transposeUp.addEventListener('click', () => transposePlayAlong(1));
   dom.setLoopStartButton.addEventListener('click', () => { loopStart = currentPlayerTime(); if (Number.isFinite(loopEnd) && loopEnd <= loopStart) loopEnd = null; updateLoopControls(); }); dom.setLoopEndButton.addEventListener('click', () => { const time = currentPlayerTime(); if (Number.isFinite(loopStart) && time > loopStart + .25) loopEnd = time; else showToast('Set A first, then move later in the song to set B.'); updateLoopControls(); }); dom.toggleLoopButton.addEventListener('click', () => { if (!Number.isFinite(loopStart) || !Number.isFinite(loopEnd) || loopEnd <= loopStart) { showToast('Set both A and B before turning the loop on.'); return; } loopEnabled = !loopEnabled; updateLoopControls(); });
   dom.upcomingChords.addEventListener('click', (event) => { const button = event.target.closest('button[data-time]'); if (!button || !youtubePlayerReady) return; youtubePlayer.seekTo(Number(button.dataset.time), true); renderPlayAlongAtCurrentTime(true); }); dom.playAlongDiagram.addEventListener('click', () => { if (playAlongCurrentVoicing) playChordVoicingSound(playAlongCurrentVoicing, currentTuning.midi, settings.instrument); });
   dom.editSongChartButton.addEventListener('click', openSongChartEditor); dom.findChordsButton.addEventListener('click', findSongChords); dom.songChartForm.addEventListener('submit', saveSongChart); dom.markChordButton.addEventListener('click', markChordAtCurrentTime);
-  dom.libraryDialog.addEventListener('close', () => { try { youtubePlayer?.pauseVideo?.(); } catch (_) {} stopChordSound(); if (libraryIndexing) { libraryIndexToken += 1; libraryIndexing = false; dom.indexPlaylistButton.textContent = 'Read titles'; } });
+  dom.libraryDialog.addEventListener('close', () => { try { youtubePlayer?.pauseVideo?.(); } catch (_) {} disconnectSongListObserver(); stopChordSound(); });
 }
