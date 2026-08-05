@@ -13,9 +13,15 @@ Fretline is a minimalist, installable guitar and ukulele tuner that runs entirel
 - Automatic string recognition or manual string lock
 - A4 calibration from 430–450 Hz
 - Adjustable microphone sensitivity and note spelling
-- Reference tones, per-string progress, haptics, wake lock, and dark mode
+- Guitar- and ukulele-specific plucked-string references generated on the device
+- Live guidance for quiet or unclear microphone input
+- Per-string progress, haptics, wake lock, and dark mode
 - Installable PWA with offline support
-- No accounts, analytics, or server-side audio processing
+- No accounts, analytics, licensed samples, or server-side audio processing
+
+## Reference strings
+
+Reference playback uses a deterministic physical-style string model with instrument-specific harmonic decay, pluck position, body resonances, and filtering. It stays fully offline while sounding closer to a real guitar or ukulele string than an oscillator tone.
 
 ## Run locally
 
@@ -34,11 +40,13 @@ npm test
 npm run check
 ```
 
+The test suite checks pitch detection, tuning data, and the generated reference strings across the supported guitar and ukulele range.
+
 ## Deployment
 
-Pushing to `main` runs the GitHub Pages workflow in `.github/workflows/pages.yml`.
+Pushing to `main` runs the GitHub Pages workflow in `.github/workflows/pages.yml`. It validates the source, publishes the tested commit to `gh-pages`, and requests a Pages build.
 
-For a new repository, select **Settings → Pages → Source → GitHub Actions** once. The expected public URL is:
+The public URL is:
 
 `https://legedith.github.io/Guitartuner/`
 

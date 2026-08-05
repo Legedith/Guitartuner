@@ -1,4 +1,3 @@
-
 const STORAGE_KEY = 'fretline:tuner:v1';
 const ANALYSIS_INTERVAL_MS = 58;
 const PITCH_TIMEOUT_MS = 480;
@@ -59,6 +58,8 @@ let stableTargetIndex = null;
 let stableSince = 0;
 let pendingAutoTarget = null;
 let pendingAutoFrames = 0;
+let quietSignalSince = 0;
+let unclearSignalSince = 0;
 let animationFrame = 0;
 let microphoneBusy = false;
 let listening = false;
@@ -71,8 +72,9 @@ let wakeLockSentinel = null;
 let referenceContext = null;
 let referenceToneNodes = [];
 let referenceToneTimer = 0;
+let referenceTonePlayId = 0;
+let referenceBufferCache = new Map();
 let tonePlaying = false;
 let deferredInstallPrompt = null;
 let editingCustomId = null;
 let toastTimer = 0;
-

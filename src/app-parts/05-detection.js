@@ -31,21 +31,34 @@ function markStableString(target, cents, clarity, now) {
 function renderPitch(target, cents, normalizedFrequency, clarity, now) {
   const smoothedCents = smoothCents(cents, target.index, now); const smoothedFrequency = target.frequency * (2 ** (smoothedCents / 1200)); const direction = tuningDirection(smoothedCents, IN_TUNE_CENTS); const magnitude = Math.abs(smoothedCents); const rounded = magnitude < 10 ? magnitude.toFixed(1) : Math.round(magnitude).toString();
   dom.pitchNote.textContent = target.note; dom.pitchOctave.textContent = String(target.octave); dom.pitchFrequency.textContent = `${(Number.isFinite(smoothedFrequency) ? smoothedFrequency : normalizedFrequency).toFixed(1)} Hz`; dom.pitchCents.textContent = `${smoothedCents > 0 ? '+' : smoothedCents < 0 ? '−' : ''}${rounded} cents`; dom.tunerCard.dataset.state = direction; dom.listenStatus.textContent = 'Listening'; setNeedle(smoothedCents);
-  dom.pitchInstruction.textContent = direction === 'in-tune' ? 'In tune' : direction === 'flat' ? `Tune up · ${rounded} cents flat` : `Tune down · ${rounded} cents sharp`; markStableString(target, smoothedCents, clarity, now);
+  dom.pitchInstruction.textContent = direction === 'in-tune' ? 'In tune · let it ring' : direction === 'flat' ? `Tune up · ${rounded} cents flat` : `Tune down · ${rounded} cents sharp`; markStableString(target, smoothedCents, clarity, now);
 }
 function handlePitch(pitch, now) {
   let target; let cents; let normalizedFrequency;
   if (settings.mode === 'auto') {
-    const match = matchPitchToTargets(pitch.frequency, targets, { maxCents: 430, maxHarmonic: 3 }); if (!match || !acceptAutoTarget(match.target.index)) return; target = match.target; cents = match.cents; normalizedFrequency = match.normalizedFrequency;
+    const match = matchPitchToTargets(pitch.frequency, targets, { maxCents: 430, maxHarmonic: 3 }); if (!match || !acceptAutoTarget(match.target.index)) return false; target = match.target; cents = match.cents; normalizedFrequency = match.normalizedFrequency;
   } else {
-    target = targets[selectedTargetIndex]; const match = normalizePitchToTarget(pitch.frequency, target.frequency); if (!match || Math.abs(match.cents) > 560) return; cents = match.cents; normalizedFrequency = match.normalizedFrequency;
+    target = targets[selectedTargetIndex]; const match = normalizePitchToTarget(pitch.frequency, target.frequency); if (!match || Math.abs(match.cents) > 560) return false; cents = match.cents; normalizedFrequency = match.normalizedFrequency;
   }
-  lastPitchAt = now; renderPitch(target, cents, normalizedFrequency, pitch.clarity, now);
+  quietSignalSince = 0; unclearSignalSince = 0; lastPitchAt = now; renderPitch(target, cents, normalizedFrequency, pitch.clarity, now); return true;
 }
-function handleNoPitch(now) { if (lastPitchAt === 0 || now - lastPitchAt > PITCH_TIMEOUT_MS) { pitchHistory = []; stableSince = 0; setWaitingDisplay(); } }
+function handleNoPitch(now, rms = 0) {
+  const threshold = minimumRms();
+  if (rms < threshold) { if (!quietSignalSince) quietSignalSince = now; unclearSignalSince = 0; }
+  else { if (!unclearSignalSince) unclearSignalSince = now; quietSignalSince = 0; }
+  if (lastPitchAt !== 0 && now - lastPitchAt <= PITCH_TIMEOUT_MS) return;
+  pitchHistory = []; stableSince = 0; setWaitingDisplay();
+  if (quietSignalSince && now - quietSignalSince > 2200) {
+    dom.listenStatus.textContent = 'Listening · no string heard';
+    dom.pitchInstruction.textContent = 'Move closer and pluck one string firmly';
+  } else if (unclearSignalSince && now - unclearSignalSince > 1500) {
+    dom.listenStatus.textContent = 'Listening · unclear pitch';
+    dom.pitchInstruction.textContent = 'Mute the other strings and reduce background noise';
+  }
+}
 function analysisLoop(now) {
   if (!listening) return; animationFrame = requestAnimationFrame(analysisLoop); if (tonePlaying || now - lastAnalysisAt < ANALYSIS_INTERVAL_MS) return; lastAnalysisAt = now;
-  analyser.getFloatTimeDomainData(analysisBuffer); const rms = calculateRms(analysisBuffer); updateSignalLevel(rms); if (rms < minimumRms()) { handleNoPitch(now); return; }
+  analyser.getFloatTimeDomainData(analysisBuffer); const rms = calculateRms(analysisBuffer); updateSignalLevel(rms); if (rms < minimumRms()) { handleNoPitch(now, rms); return; }
   const frequencies = targets.map((target) => target.frequency); const minFrequency = Math.max(45, Math.min(...frequencies) * .55); const maxFrequency = Math.min(1300, Math.max(...frequencies) * 3.1);
-  const pitch = detectPitchYIN(analysisBuffer, microphoneContext.sampleRate, { minFrequency, maxFrequency, minRms: minimumRms() }); if (pitch) handlePitch(pitch, now); else handleNoPitch(now);
+  const pitch = detectPitchYIN(analysisBuffer, microphoneContext.sampleRate, { minFrequency, maxFrequency, minRms: minimumRms() }); if (!pitch || !handlePitch(pitch, now)) handleNoPitch(now, rms);
 }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fretline-v1';
+const CACHE_NAME = 'fretline-v2';
 const APP_ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const APP_ASSETS = [
   './styles/dialogs.css',
   './src/boot.js',
   './src/pitch.js',
+  './src/reference-string.js',
   './src/tunings.js',
   './src/app-parts/01-state.js',
   './src/app-parts/02-ui.js',
