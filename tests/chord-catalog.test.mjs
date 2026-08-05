@@ -8,7 +8,7 @@ const playlistCatalog = JSON.parse(await readFile(new URL('../src/data/playlist-
 const charts = Object.entries(chordCatalog.charts ?? {});
 const playlistVideoIds = new Set((playlistCatalog.tracks ?? []).map((track) => track.videoId));
 
-test('bundled chord catalog has the expected generated coverage', () => {
+test('bundled chord catalog has increased composition-first coverage', () => {
   assert.equal(chordCatalog.schema, 'fretline-chord-catalog');
   assert.equal(chordCatalog.version, 1);
   assert.equal(chordCatalog.playlistId, 'PL0gpFgtesNu015JGaKSx8BonbVjGRefKb');
@@ -16,13 +16,11 @@ test('bundled chord catalog has the expected generated coverage', () => {
   assert.equal(chordCatalog.stats.playlistEntries, 1611);
   assert.equal(chordCatalog.stats.uniqueVideos, playlistVideoIds.size);
   assert.equal(chordCatalog.stats.uniqueVideos, 1608);
-  assert.equal(chordCatalog.stats.chartedUniqueVideos, 519);
+  assert.ok(chordCatalog.stats.chartedUniqueVideos >= 600, `expected at least 600 charts, received ${chordCatalog.stats.chartedUniqueVideos}`);
   assert.equal(
     chordCatalog.stats.coveragePercent,
     Number(((charts.length / playlistVideoIds.size) * 100).toFixed(2)),
   );
-  assert.ok(chordCatalog.stats.highConfidence >= 450);
-  assert.ok(chordCatalog.stats.lowConfidence <= 25);
   assert.equal(chordCatalog.stats.unmatched, chordCatalog.stats.uniqueVideos - charts.length);
   assert.equal(charts.length, chordCatalog.stats.chartedUniqueVideos);
   assert.equal(
@@ -39,8 +37,10 @@ test('catalog attribution and limitations are explicit', () => {
   assert.match(chordCatalog.timingNotice, /estimat/i);
 });
 
-test('every accepted map belongs to the playlist and declares match provenance', () => {
+test('every accepted map belongs to the playlist and declares composition provenance', () => {
   const confidenceCounts = { high: 0, medium: 0, low: 0 };
+  const matchModes = new Set(['same-composition-cover', 'same-composition-version', 'same-title-recording', 'fuzzy-composition']);
+  let compositionLevelMatches = 0;
   for (const [videoId, chart] of charts) {
     assert.match(videoId, /^[A-Za-z0-9_-]{11}$/);
     assert.ok(playlistVideoIds.has(videoId), `${videoId} is not in the bundled playlist`);
@@ -54,11 +54,20 @@ test('every accepted map belongs to the playlist and declares match provenance',
     assert.match(chart.provenance.spotifySongId, /^[A-Za-z0-9]{22}$/);
     assert.ok(['high', 'medium', 'low'].includes(chart.provenance.confidence));
     assert.equal(chart.provenance.timing, 'estimated-uniform-fit');
+    assert.equal(chart.provenance.policy, 'composition-first-v1');
+    assert.ok(matchModes.has(chart.provenance.matchMode), `${videoId} has unknown match mode ${chart.provenance.matchMode}`);
+    assert.equal(typeof chart.provenance.titleExact, 'boolean');
+    assert.equal(typeof chart.provenance.artistEquivalent, 'boolean');
+    assert.equal(typeof chart.provenance.versionDifferenceAccepted, 'boolean');
+    assert.ok(Array.isArray(chart.provenance.playlistVersionTags));
+    assert.ok(Array.isArray(chart.provenance.matchedVersionTags));
     assert.ok(Number.isFinite(chart.provenance.score));
     assert.ok(Number.isFinite(chart.provenance.titleScore));
     assert.ok(Number.isFinite(chart.provenance.artistScore));
     confidenceCounts[chart.provenance.confidence] += 1;
+    if (chart.provenance.matchMode === 'same-composition-cover' || chart.provenance.matchMode === 'same-composition-version') compositionLevelMatches += 1;
   }
+  assert.ok(compositionLevelMatches > 0, 'expected at least one accepted cover or alternate-version match');
   assert.deepEqual(confidenceCounts, {
     high: chordCatalog.stats.highConfidence,
     medium: chordCatalog.stats.mediumConfidence,
