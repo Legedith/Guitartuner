@@ -1,7 +1,7 @@
 import { parseChordSymbol, transposeChordSymbol } from './chords.js';
 
 export const DEFAULT_PLAYLIST_URL = 'https://music.youtube.com/playlist?list=PL0gpFgtesNu015JGaKSx8BonbVjGRefKb';
-export const DEFAULT_PLAYLIST_CATALOG_URL = './data/playlist-catalog.json';
+export const DEFAULT_PLAYLIST_CATALOG_URL = './src/data/playlist-catalog.json';
 
 function finiteNumber(value, fallback = 0) { const number = Number(value); return Number.isFinite(number) ? number : fallback; }
 function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
