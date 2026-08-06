@@ -8,6 +8,7 @@ import {
   parsePlainLyrics,
   parseSyncedLyrics,
   placeChordsAboveLyrics,
+  placeChordsAboveWords,
   scoreLyricsRecord,
   selectLyricsRecord,
 } from '../src/lyrics.js';
@@ -47,9 +48,24 @@ test('parses multiple LRC timestamps and fractional seconds', () => {
   ]);
 });
 
+test('preserves enhanced LRC word timestamps when available', () => {
+  const lines = parseSyncedLyrics('[00:00.00]<00:00.00>First <00:01.20>light <00:02.40>falls');
+  assert.deepEqual(lines, [{
+    time: 0,
+    text: 'First light falls',
+    wordTimes: [
+      { time: 0, text: 'First' },
+      { time: 1.2, text: 'light' },
+      { time: 2.4, text: 'falls' },
+    ],
+  }]);
+  assert.equal(lyricsLinesFromRecord({ syncedLyrics: '[00:00.00]<00:00.00>First <00:01.20>light' }).wordSynced, true);
+});
+
 test('falls back from synced to plain lyric lines', () => {
   assert.deepEqual(lyricsLinesFromRecord({ syncedLyrics: '', plainLyrics: '[Verse]\nFirst light\n\nRiver home' }), {
     synced: false,
+    wordSynced: false,
     lines: [{ time: null, text: 'First light' }, { time: null, text: 'River home' }],
   });
   assert.deepEqual(parsePlainLyrics('One line\r\nTwo lines'), [
@@ -58,7 +74,7 @@ test('falls back from synced to plain lyric lines', () => {
   ]);
 });
 
-test('places chord changes above timed lyric lines', () => {
+test('retains line-level chord grouping for compatibility', () => {
   const lines = [
     { time: 0, text: 'First line' },
     { time: 10, text: 'Second line' },
@@ -75,8 +91,38 @@ test('places chord changes above timed lyric lines', () => {
   assert.equal(result[0].section, 'Verse');
 });
 
-test('places estimated chord events proportionally above plain lyrics', () => {
-  const lines = ['One', 'Two', 'Three', 'Four'].map((text) => ({ time: null, text }));
+test('aligns line-timed chord changes above the target lyric word', () => {
+  const lines = [
+    { time: 0, text: 'We start playing right now' },
+    { time: 10, text: 'Then move into the chorus' },
+  ];
+  const events = [
+    { time: 0, chord: 'C' },
+    { time: 4, chord: 'G' },
+    { time: 8.5, chord: 'Am' },
+    { time: 12, chord: 'F' },
+  ];
+  const result = placeChordsAboveWords(lines, events, 20);
+  assert.deepEqual(result[0].words.map((word) => word.chords.map((item) => item.chord)), [
+    ['C'], [], ['G'], [], ['Am'],
+  ]);
+  assert.deepEqual(result[1].words.map((word) => word.chords.map((item) => item.chord)), [
+    [], ['F'], [], [], [],
+  ]);
+});
+
+test('uses enhanced word timestamps before interpolation', () => {
+  const lines = parseSyncedLyrics('[00:00.00]<00:00.00>First <00:01.20>light <00:02.40>falls\n[00:04.00]Next line');
+  const result = placeChordsAboveWords(lines, [
+    { time: .2, chord: 'C' },
+    { time: 1.5, chord: 'G' },
+    { time: 2.8, chord: 'Am' },
+  ], 8);
+  assert.deepEqual(result[0].words.map((word) => word.chords.map((item) => item.chord)), [['C'], ['G'], ['Am']]);
+});
+
+test('places estimated chord events proportionally across words in plain lyrics', () => {
+  const lines = ['One first', 'Two second', 'Three third', 'Four fourth'].map((text) => ({ time: null, text }));
   const events = [
     { time: 0, chord: 'C' },
     { time: 25, chord: 'G' },
@@ -84,19 +130,29 @@ test('places estimated chord events proportionally above plain lyrics', () => {
     { time: 75, chord: 'F' },
     { time: 90, chord: 'F' },
   ];
-  const result = placeChordsAboveLyrics(lines, events, 100);
-  assert.deepEqual(result.map((line) => line.chords), [['C'], ['G'], ['Am'], ['F']]);
+  const result = placeChordsAboveWords(lines, events, 100);
+  assert.deepEqual(result.map((line) => line.words.flatMap((word) => word.chords.map((item) => item.chord))), [['C'], ['G'], ['Am'], ['F']]);
+});
+
+test('keeps displayed capo shapes separate from sounding chords', () => {
+  const result = placeChordsAboveWords([{ time: 0, text: 'Start here' }], [{
+    time: 0,
+    chord: 'A',
+    displayChord: 'G',
+    soundChord: 'A',
+  }], 4);
+  assert.deepEqual(result[0].words[0].chords[0], { chord: 'G', soundChord: 'A', time: 0, section: '' });
 });
 
 test('scroll speed is constrained to the requested 0.1 to 1.0 range', () => {
-  assert.equal(clampLyricsScrollSpeed(-2), 0.1);
-  assert.equal(clampLyricsScrollSpeed(0.56), 0.6);
+  assert.equal(clampLyricsScrollSpeed(-2), .1);
+  assert.equal(clampLyricsScrollSpeed(.56), .6);
   assert.equal(clampLyricsScrollSpeed(4), 1);
-  assert.equal(clampLyricsScrollSpeed('bad'), 0.5);
+  assert.equal(clampLyricsScrollSpeed('bad'), .5);
 });
 
 test('1.0 scroll speed completes the lyrics over the song duration', () => {
   assert.equal(lyricsScrollRate(1500, 500, 200, 1), 5);
-  assert.equal(lyricsScrollRate(1500, 500, 200, 0.5), 2.5);
+  assert.equal(lyricsScrollRate(1500, 500, 200, .5), 2.5);
   assert.equal(lyricsScrollRate(500, 500, 200, 1), 0);
 });
