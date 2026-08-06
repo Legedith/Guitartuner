@@ -1,12 +1,12 @@
 {
   "name": "fretline-tuner",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "private": true,
   "type": "module",
-  "description": "A minimal guitar and ukulele tuner with word-aligned chord and lyric play along.",
+  "description": "A minimal guitar and ukulele tuner with standalone scrolling, simplified chords, transposition, and word-aligned lyrics.",
   "scripts": {
     "test": "node --test",
-    "check": "node --check scripts/index-playlist.mjs && node --check src/boot.js && node --check src/chords.js && node --check src/library-view.js && node --check src/lyrics.js && node --check src/pitch.js && node --check src/reference-string.js && node --check src/song-guidance.js && node --check src/song-library.js && node --check src/tunings.js && node --check src/app-parts/*.js && node --check service-worker.js"
+    "check": "node --check scripts/index-playlist.mjs && node --check src/boot.js && node --check src/chords.js && node --check src/library-view.js && node --check src/lyrics.js && node --check src/pitch.js && node --check src/practice-sheet.js && node --check src/reference-string.js && node --check src/song-guidance.js && node --check src/song-library.js && node --check src/tunings.js && node --check src/app-parts/*.js && node --check service-worker.js"
   },
   "engines": { "node": ">=20" }
 }
