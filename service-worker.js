@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fretline-v7';
+const CACHE_NAME = 'fretline-v8';
 const APP_ASSETS = [
   './',
   './index.html',
@@ -8,9 +8,11 @@ const APP_ASSETS = [
   './styles/practice.css',
   './styles/chord-catalog.css',
   './styles/minimal-library.css',
+  './styles/lyrics-sheet.css',
   './src/boot.js',
   './src/chords.js',
   './src/library-view.js',
+  './src/lyrics-sheet.js',
   './src/pitch.js',
   './src/reference-string.js',
   './src/song-library.js',
@@ -29,6 +31,7 @@ const APP_ASSETS = [
   './src/app-parts/10-chord-catalog.js',
   './src/app-parts/11-composition-matches.js',
   './src/app-parts/12-minimal-library.js',
+  './src/app-parts/13-lyrics-sheet.js',
   './manifest.webmanifest',
   './assets/icon.svg',
   './assets/icon-192.png',
