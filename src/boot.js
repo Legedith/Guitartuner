@@ -3,10 +3,11 @@ import * as LibraryView from './library-view.js';
 import * as Lyrics from './lyrics.js';
 import * as Pitch from './pitch.js';
 import * as ReferenceStrings from './reference-string.js';
+import * as SongGuidance from './song-guidance.js';
 import * as SongLibrary from './song-library.js';
 import * as Tunings from './tunings.js';
 
-Object.assign(globalThis, Chords, LibraryView, Lyrics, Pitch, ReferenceStrings, SongLibrary, Tunings);
+Object.assign(globalThis, Chords, LibraryView, Lyrics, Pitch, ReferenceStrings, SongGuidance, SongLibrary, Tunings);
 
 const applicationParts = [
   './app-parts/01-state.js',
