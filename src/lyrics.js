@@ -15,6 +15,13 @@ function finiteTimestamp(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function timestampFromMatch(match) {
+  const minutes = Number(match[1]);
+  const seconds = Number(match[2]);
+  const fractionText = match[3] ?? '0';
+  return (minutes * 60) + seconds + (Number(fractionText) / (10 ** fractionText.length));
+}
+
 function normalizeText(value) {
   return cleanSpace(value)
     .normalize('NFKD')
@@ -77,7 +84,7 @@ export function scoreLyricsRecord(record, track) {
   const durationDifference = targetDuration > 0 && candidateDuration > 0 ? Math.abs(targetDuration - candidateDuration) : null;
   const durationScore = durationDifference === null ? 55 : Math.max(0, 100 - Math.min(100, durationDifference * 2));
   const syncedBonus = typeof record.syncedLyrics === 'string' && record.syncedLyrics.trim() ? 8 : 0;
-  return (titleScore * 0.62) + (artistScore * 0.28) + (durationScore * 0.10) + syncedBonus;
+  return (titleScore * .62) + (artistScore * .28) + (durationScore * .1) + syncedBonus;
 }
 
 export function selectLyricsRecord(records, track) {
@@ -94,20 +101,40 @@ export function selectLyricsRecord(records, track) {
   return bestScore >= 64 ? best : null;
 }
 
+function parseInlineWordTimes(rawLine) {
+  const markers = [...rawLine.matchAll(/<(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?>/g)];
+  const words = [];
+  markers.forEach((marker, markerIndex) => {
+    const start = marker.index + marker[0].length;
+    const end = markerIndex + 1 < markers.length ? markers[markerIndex + 1].index : rawLine.length;
+    const segment = cleanSpace(rawLine.slice(start, end).replace(/\[[^\]]+\]/g, ' '));
+    const tokens = segment.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return;
+    const time = timestampFromMatch(marker);
+    const nextTime = markerIndex + 1 < markers.length ? timestampFromMatch(markers[markerIndex + 1]) : null;
+    tokens.forEach((text, tokenIndex) => {
+      const tokenTime = Number.isFinite(nextTime) && nextTime > time
+        ? time + (((nextTime - time) * tokenIndex) / tokens.length)
+        : time;
+      words.push({ time: tokenTime, text });
+    });
+  });
+  return words;
+}
+
 export function parseSyncedLyrics(value) {
   const lines = [];
   const source = String(value ?? '').replace(/\r/g, '');
   for (const rawLine of source.split('\n')) {
     const timestamps = [...rawLine.matchAll(/\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]/g)];
     if (!timestamps.length) continue;
-    const text = cleanSpace(rawLine.replace(/\[[^\]]+\]/g, ' '));
+    const text = cleanSpace(rawLine.replace(/\[[^\]]+\]/g, ' ').replace(/<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>/g, ' '));
     if (!text) continue;
+    const wordTimes = parseInlineWordTimes(rawLine);
     for (const match of timestamps) {
-      const minutes = Number(match[1]);
-      const seconds = Number(match[2]);
-      const fractionText = match[3] ?? '0';
-      const fraction = Number(fractionText) / (10 ** fractionText.length);
-      lines.push({ time: (minutes * 60) + seconds + fraction, text });
+      const line = { time: timestampFromMatch(match), text };
+      if (wordTimes.length) line.wordTimes = wordTimes.map((word) => ({ ...word }));
+      lines.push(line);
     }
   }
   return lines.sort((left, right) => left.time - right.time);
@@ -124,18 +151,26 @@ export function parsePlainLyrics(value) {
 
 export function lyricsLinesFromRecord(record) {
   const synced = parseSyncedLyrics(record?.syncedLyrics);
-  if (synced.length) return { lines: synced, synced: true };
-  return { lines: parsePlainLyrics(record?.plainLyrics), synced: false };
+  if (synced.length) return { lines: synced, synced: true, wordSynced: synced.some((line) => line.wordTimes?.length) };
+  return { lines: parsePlainLyrics(record?.plainLyrics), synced: false, wordSynced: false };
 }
 
 function collapsedChordEvents(events) {
   const output = [];
-  let previous = '';
+  let previousDisplay = '';
+  let previousSound = '';
   for (const event of Array.isArray(events) ? events : []) {
-    const chord = cleanSpace(event?.chord);
-    if (!chord || chord === '—' || chord === previous) continue;
-    output.push({ time: Math.max(0, Number(event.time) || 0), chord, section: cleanSpace(event.section) });
-    previous = chord;
+    const displayChord = cleanSpace(event?.displayChord ?? event?.chord);
+    const soundChord = cleanSpace(event?.soundChord ?? event?.chord);
+    if (!displayChord || displayChord === '—' || (displayChord === previousDisplay && soundChord === previousSound)) continue;
+    output.push({
+      time: Math.max(0, Number(event.time) || 0),
+      chord: displayChord,
+      soundChord: soundChord || displayChord,
+      section: cleanSpace(event.section),
+    });
+    previousDisplay = displayChord;
+    previousSound = soundChord;
   }
   return output;
 }
@@ -156,36 +191,113 @@ function syncedLineIndex(lines, time) {
   return answer;
 }
 
-export function placeChordsAboveLyrics(lines, events, duration = 0) {
-  const lyricLines = (Array.isArray(lines) ? lines : []).map((line) => ({
-    time: finiteTimestamp(line?.time),
-    text: cleanSpace(line?.text),
-    chords: [],
-    section: '',
-  })).filter((line) => line.text);
+function median(values) {
+  if (!values.length) return 4;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function lineWords(line) {
+  const timedWords = Array.isArray(line?.wordTimes)
+    ? line.wordTimes
+      .map((word) => ({ text: cleanSpace(word?.text), time: finiteTimestamp(word?.time), chords: [] }))
+      .filter((word) => word.text)
+    : [];
+  if (timedWords.length) return timedWords;
+  return cleanSpace(line?.text).split(/\s+/).filter(Boolean).map((text) => ({ text, time: null, chords: [] }));
+}
+
+function wordIndexFromTimes(words, time) {
+  const timed = words.map((word, index) => ({ index, time: finiteTimestamp(word.time) })).filter((word) => Number.isFinite(word.time));
+  if (!timed.length) return null;
+  let answer = timed[0].index;
+  for (const word of timed) {
+    if (word.time > time) break;
+    answer = word.index;
+  }
+  return answer;
+}
+
+function locateGlobalWord(lines, target) {
+  let remaining = target;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    if (remaining < lines[lineIndex].words.length) return { lineIndex, wordIndex: remaining };
+    remaining -= lines[lineIndex].words.length;
+  }
+  const lineIndex = Math.max(0, lines.length - 1);
+  return { lineIndex, wordIndex: Math.max(0, lines[lineIndex].words.length - 1) };
+}
+
+export function placeChordsAboveWords(lines, events, duration = 0) {
+  const lyricLines = (Array.isArray(lines) ? lines : [])
+    .map((line) => ({
+      time: finiteTimestamp(line?.time),
+      endTime: null,
+      text: cleanSpace(line?.text),
+      words: lineWords(line),
+      chords: [],
+      section: '',
+    }))
+    .filter((line) => line.text && line.words.length);
   if (!lyricLines.length) return [];
 
   const chords = collapsedChordEvents(events);
   const timedLyrics = lyricLines.every((line) => Number.isFinite(line.time));
   const songDuration = Math.max(0, Number(duration) || 0);
+  if (timedLyrics) {
+    const gaps = lyricLines.slice(1).map((line, index) => line.time - lyricLines[index].time).filter((gap) => gap > .2 && gap < 30);
+    const fallbackGap = median(gaps);
+    lyricLines.forEach((line, index) => {
+      const nextTime = lyricLines[index + 1]?.time;
+      line.endTime = Number.isFinite(nextTime) && nextTime > line.time
+        ? nextTime
+        : songDuration > line.time ? songDuration : line.time + fallbackGap;
+    });
+  }
+
+  const totalWords = lyricLines.reduce((sum, line) => sum + line.words.length, 0);
   chords.forEach((event, eventIndex) => {
-    let lineIndex;
+    let lineIndex = 0;
+    let wordIndex = 0;
     if (timedLyrics) {
       lineIndex = syncedLineIndex(lyricLines, event.time);
-    } else if (songDuration > 0) {
-      lineIndex = Math.floor(clamp(event.time / songDuration, 0, 1) * lyricLines.length);
+      const line = lyricLines[lineIndex];
+      const timestampedWord = wordIndexFromTimes(line.words, event.time);
+      if (Number.isInteger(timestampedWord)) {
+        wordIndex = timestampedWord;
+      } else {
+        const span = Math.max(.25, line.endTime - line.time);
+        const ratio = clamp((event.time - line.time) / span, 0, .999999);
+        wordIndex = Math.floor(ratio * line.words.length);
+      }
     } else {
-      lineIndex = Math.round((eventIndex / Math.max(1, chords.length - 1)) * (lyricLines.length - 1));
+      const ratio = songDuration > 0
+        ? clamp(event.time / songDuration, 0, .999999)
+        : eventIndex / Math.max(1, chords.length);
+      const target = Math.min(totalWords - 1, Math.floor(ratio * totalWords));
+      ({ lineIndex, wordIndex } = locateGlobalWord(lyricLines, target));
     }
+
     const line = lyricLines[clamp(lineIndex, 0, lyricLines.length - 1)];
+    const word = line.words[clamp(wordIndex, 0, line.words.length - 1)];
+    const placement = { chord: event.chord, soundChord: event.soundChord, time: event.time, section: event.section };
+    if (!word.chords.some((item) => item.chord === placement.chord && item.soundChord === placement.soundChord)) word.chords.push(placement);
     if (!line.chords.includes(event.chord)) line.chords.push(event.chord);
     if (!line.section && event.section) line.section = event.section;
   });
   return lyricLines;
 }
 
+export function placeChordsAboveLyrics(lines, events, duration = 0) {
+  return placeChordsAboveWords(lines, events, duration).map((line) => ({
+    ...line,
+    chords: line.words.flatMap((word) => word.chords.map((placement) => placement.chord)).filter((chord, index, values) => values.indexOf(chord) === index),
+  }));
+}
+
 export function clampLyricsScrollSpeed(value) {
-  return Math.round(clamp(Number(value) || 0.5, 0.1, 1) * 10) / 10;
+  return Math.round(clamp(Number(value) || .5, .1, 1) * 10) / 10;
 }
 
 export function lyricsScrollRate(scrollHeight, viewportHeight, duration, speed) {
