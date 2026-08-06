@@ -173,7 +173,7 @@ export function placeChordsAboveLyrics(lines, events, duration = 0) {
     if (timedLyrics) {
       lineIndex = syncedLineIndex(lyricLines, event.time);
     } else if (songDuration > 0) {
-      lineIndex = Math.round(clamp(event.time / songDuration, 0, 1) * (lyricLines.length - 1));
+      lineIndex = Math.floor(clamp(event.time / songDuration, 0, 1) * lyricLines.length);
     } else {
       lineIndex = Math.round((eventIndex / Math.max(1, chords.length - 1)) * (lyricLines.length - 1));
     }
