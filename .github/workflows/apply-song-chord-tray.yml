@@ -1,0 +1,48 @@
+name: Apply song chord tray update
+
+on:
+  push:
+    branches:
+      - agent/song-chord-tray
+    paths:
+      - .github/workflows/apply-song-chord-tray.yml
+      - tmp/fretline-song-chords-update.zip
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-song-chord-tray-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Apply and validate update
+        run: |
+          rm -rf /tmp/fretline-song-chords-update
+          mkdir -p /tmp/fretline-song-chords-update
+          unzip -q tmp/fretline-song-chords-update.zip -d /tmp/fretline-song-chords-update
+          node /tmp/fretline-song-chords-update/fretline-song-chords-update/apply-update.mjs . --test
+
+      - name: Commit final source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/apply-song-chord-tray.yml tmp/fretline-song-chords-update.zip
+          git add -A
+          git commit -m 'Add compact song chord charts'
+          git push origin HEAD:agent/song-chord-tray
