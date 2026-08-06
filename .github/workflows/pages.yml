@@ -1,4 +1,4 @@
-name: Validate and deploy Fretline
+name: Validate and publish Fretline
 
 on:
   push:
@@ -8,9 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: fretline-${{ github.workflow }}-${{ github.ref }}
@@ -31,41 +29,15 @@ jobs:
       - name: Validate source
         run: npm test && npm run check
 
-  deploy:
+  publish:
     if: github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      - name: Switch Pages to workflow deployment
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --method PUT \
-            -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "repos/${GITHUB_REPOSITORY}/pages" \
-            -f build_type=workflow
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: Prepare site artifact
-        run: |
-          mkdir _site
-          cp index.html manifest.webmanifest service-worker.js _site/
-          cp -R assets styles src _site/
-          rm -f _site/src/data/chord-match-report.json
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          fetch-depth: 0
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish tested commit to gh-pages
+        run: git push origin HEAD:gh-pages
