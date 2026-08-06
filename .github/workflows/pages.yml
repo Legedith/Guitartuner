@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: fretline-${{ github.workflow }}-${{ github.ref }}
@@ -34,10 +35,17 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout tested commit
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Publish tested commit to gh-pages
         run: git push origin HEAD:gh-pages
+
+      # Pushes made with GITHUB_TOKEN do not start another workflow. Dispatch the
+      # Pages workflow explicitly so it runs on the environment-authorized ref.
+      - name: Dispatch GitHub Pages deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-gh-pages.yml --ref gh-pages
