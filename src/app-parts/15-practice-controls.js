@@ -2,7 +2,7 @@ const FRETLINE_PRACTICE_SIMPLIFY_KEY = 'fretline:practice-simplify';
 const FRETLINE_PRACTICE_TRANSPOSE_PREFIX = 'fretline:practice-transpose:';
 const fretlinePracticeBaseSelectSong = selectSong;
 const fretlinePracticeBaseUpdateGuide = updateFretlineLyricsGuide;
-const fretlinePracticeBaseActiveLine = updateFretlineLyricsActiveLine;
+const fretlinePracticeBaseUpdateLyricsControls = updateFretlineLyricsControls;
 let fretlinePracticeSimplified = loadFretlinePracticeSimplified();
 let fretlinePracticeTranspose = 0;
 let fretlinePracticeControls = null;
@@ -156,6 +156,14 @@ updateFretlineLyricsGuide = function updatePracticeGuide(guidance = guidanceForT
   updateFretlinePracticeControls();
 };
 
+updateFretlineLyricsControls = function updateIndependentScrollControls() {
+  fretlinePracticeBaseUpdateLyricsControls();
+  if (!dom.playAlongToggle) return;
+  const label = fretlineLyricsScrollPlaying ? 'Pause scrolling' : 'Start scrolling';
+  dom.playAlongToggle.setAttribute('aria-label', label);
+  dom.playAlongToggle.title = label;
+};
+
 selectSong = async function selectSongForIndependentPractice(catalogId) {
   const request = fretlinePracticeBaseSelectSong(catalogId, false);
   fretlinePracticeTranspose = loadFretlinePracticeTranspose(selectedSong?.videoId);
@@ -178,7 +186,6 @@ onYouTubePlayerReady = function readyOptionalYouTubePlayer() {
 onYouTubeStateChange = function optionalAudioStateChange(event) {
   fretlineLyricsBaseYouTubeStateChange(event);
   updateFretlineLyricsControls();
-  updateFretlineLyricsActiveLine();
 };
 
 togglePlayAlong = function toggleIndependentPracticeScroll() {
@@ -186,12 +193,6 @@ togglePlayAlong = function toggleIndependentPracticeScroll() {
 };
 
 updateFretlineLyricsActiveLine = function updatePracticeReadingLine() {
-  const audioPlaying = Boolean(globalThis.YT)
-    && youtubeState() === globalThis.YT.PlayerState.PLAYING;
-  if (audioPlaying) {
-    fretlinePracticeBaseActiveLine();
-    return;
-  }
   if (!fretlineLyricsViewport || !fretlineLyricsLineElements.length) return;
   const viewport = fretlineLyricsViewport.getBoundingClientRect();
   const readingY = viewport.top + (viewport.height * .36);
