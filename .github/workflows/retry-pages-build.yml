@@ -1,0 +1,21 @@
+name: Retry GitHub Pages build
+
+on:
+  push:
+    branches:
+      - agent/retry-pages-build
+    paths:
+      - .github/workflows/retry-pages-build.yml
+
+permissions:
+  contents: read
+  pages: write
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request Pages build for current gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/${GITHUB_REPOSITORY}/pages/builds"
