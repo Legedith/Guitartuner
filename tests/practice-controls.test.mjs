@@ -6,7 +6,7 @@ const source = await readFile(new URL('../src/app-parts/15-practice-controls.js'
 const styles = await readFile(new URL('../styles/lyrics.css', import.meta.url), 'utf8');
 
 function functionBody(name) {
-  const match = source.match(new RegExp(`${name} = function [^{]*\\{([\\s\\S]*?)\\n\\};`));
+  const match = source.match(new RegExp(`${name} = (?:async )?function [^{]*\\{([\\s\\S]*?)\\n\\};`));
   assert.ok(match, `missing ${name}`);
   return match[1];
 }
