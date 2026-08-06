@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fretline-v12';
+const CACHE_NAME = 'fretline-v13';
 const APP_ASSETS = [
   './',
   './index.html',
