@@ -2,13 +2,13 @@
 .lyrics-reader{display:grid;gap:10px;margin-top:8px}
 .lyrics-guide{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;min-height:34px}
 .lyrics-guide[hidden]{display:none}
-.lyrics-instrument-switch,.lyrics-transpose-control{display:flex;padding:2px;border:1px solid var(--border);border-radius:10px;background:var(--surface-subtle)}
+.lyrics-instrument-switch{display:flex;padding:2px;border:1px solid var(--border);border-radius:10px;background:var(--surface-subtle)}
 .lyrics-instrument-switch button{min-height:28px;padding:4px 9px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:.68rem;font-weight:750}
 .lyrics-instrument-switch button[aria-pressed="true"]{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(20,24,18,.1)}
 .lyrics-practice-controls{display:flex;align-items:center;gap:6px}
 .lyrics-simplify-button{min-height:30px;padding:4px 9px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--muted);font-size:.68rem;font-weight:750}
 .lyrics-simplify-button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-strong)}
-.lyrics-transpose-control{align-items:center;overflow:hidden;padding:2px}
+.lyrics-transpose-control{display:flex;align-items:center;overflow:hidden;padding:2px;border:1px solid var(--border);border-radius:10px;background:var(--surface-subtle)}
 .lyrics-transpose-step,.lyrics-transpose-value{display:grid;min-height:26px;padding:0;place-items:center;border:0;border-radius:7px;background:transparent;color:var(--text);font-size:.76rem;font-weight:780;font-variant-numeric:tabular-nums}
 .lyrics-transpose-step{width:28px;font-size:1rem}
 .lyrics-transpose-value{min-width:34px;padding-inline:5px;color:var(--accent-strong)}
