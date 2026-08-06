@@ -9,6 +9,12 @@ function cleanSpace(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
+function finiteTimestamp(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function normalizeText(value) {
   return cleanSpace(value)
     .normalize('NFKD')
@@ -152,7 +158,7 @@ function syncedLineIndex(lines, time) {
 
 export function placeChordsAboveLyrics(lines, events, duration = 0) {
   const lyricLines = (Array.isArray(lines) ? lines : []).map((line) => ({
-    time: Number.isFinite(Number(line?.time)) ? Number(line.time) : null,
+    time: finiteTimestamp(line?.time),
     text: cleanSpace(line?.text),
     chords: [],
     section: '',
