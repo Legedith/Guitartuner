@@ -1,0 +1,34 @@
+.song-chord-tray{display:grid;gap:8px;min-width:0}
+.song-chord-tray[hidden]{display:none}
+.song-chord-list{display:flex;gap:6px;overflow-x:auto;padding:1px 2px 3px;scrollbar-width:none;overscroll-behavior-inline:contain}
+.song-chord-list::-webkit-scrollbar{display:none}
+.song-chord-list>span{flex:0 0 auto}
+.song-chord-chip{min-width:38px;min-height:30px;padding:4px 9px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);font:760 .72rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap}
+.song-chord-chip:hover,.song-chord-chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-strong)}
+.song-chord-chip:focus-visible{box-shadow:var(--focus)}
+.song-chord-panel{display:grid;gap:4px;width:min(100%,270px);margin:0 auto;padding:8px;border:1px solid var(--border);border-radius:14px;background:var(--surface-subtle);box-shadow:0 10px 24px rgba(20,24,18,.09)}
+.song-chord-panel[hidden]{display:none}
+.song-chord-panel-heading,.song-chord-panel-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.song-chord-panel-identity{display:flex;min-width:0;align-items:baseline;gap:7px}
+.song-chord-panel-identity strong{font:800 .88rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap}
+.song-chord-panel-identity span{overflow:hidden;color:var(--muted);font-size:.63rem;font-weight:730;text-overflow:ellipsis;white-space:nowrap}
+.song-chord-panel-stage{display:grid;grid-template-columns:32px minmax(0,1fr) 32px;align-items:center;gap:3px;min-height:185px}
+.song-chord-icon-button{display:grid;width:32px;height:32px;padding:0;place-items:center;border:0;border-radius:9px;background:transparent;color:var(--muted)}
+.song-chord-icon-button:hover:not(:disabled){background:var(--surface);color:var(--text)}
+.song-chord-icon-button:disabled{opacity:.25;cursor:default}
+.song-chord-icon-button:focus-visible{box-shadow:var(--focus)}
+.song-chord-icon-button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.song-chord-icon-button svg path[d$="Z"]{fill:currentColor;stroke:none}
+.song-chord-mini-diagram{display:grid;min-height:180px;place-items:center}
+.song-chord-mini-diagram svg{display:block;width:min(100%,180px);height:auto;max-height:195px}
+.song-chord-no-shape{color:var(--muted);font-size:.7rem}
+.song-chord-panel-footer{min-height:30px;justify-content:center;position:relative}
+.song-chord-panel-footer .song-chord-icon-button{position:absolute;right:0}
+.song-chord-variation-counter{color:var(--muted);font-size:.65rem;font-weight:760;font-variant-numeric:tabular-nums}
+.practice-focus .song-chord-tray{flex:0 0 auto}
+.practice-focus .song-chord-list{max-width:min(100%,760px);margin-inline:auto}
+.practice-focus .song-chord-panel{max-height:min(31dvh,250px)}
+.practice-focus .song-chord-panel-stage{min-height:min(22dvh,185px)}
+.practice-focus .song-chord-mini-diagram{min-height:min(21dvh,180px)}
+@media(max-width:480px){.song-chord-panel{width:min(100%,242px);padding:6px}.song-chord-panel-stage{grid-template-columns:30px minmax(0,1fr) 30px;min-height:164px}.song-chord-mini-diagram{min-height:160px}.song-chord-mini-diagram svg{width:min(100%,158px);max-height:172px}.song-chord-list{margin-inline:-2px}.song-chord-chip{min-height:29px;padding-inline:8px}}
+@media(prefers-reduced-motion:reduce){.song-chord-panel{scroll-behavior:auto}}

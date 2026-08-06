@@ -6,10 +6,11 @@ import * as PracticeScroll from './practice-scroll.js';
 import * as PracticeSheet from './practice-sheet.js';
 import * as ReferenceStrings from './reference-string.js';
 import * as SongGuidance from './song-guidance.js';
+import * as SongChordTray from './song-chord-tray.js';
 import * as SongLibrary from './song-library.js';
 import * as Tunings from './tunings.js';
 
-Object.assign(globalThis, Chords, LibraryView, Lyrics, Pitch, PracticeScroll, PracticeSheet, ReferenceStrings, SongGuidance, SongLibrary, Tunings);
+Object.assign(globalThis, Chords, LibraryView, Lyrics, Pitch, PracticeScroll, PracticeSheet, ReferenceStrings, SongGuidance, SongChordTray, SongLibrary, Tunings);
 
 const applicationParts = [
   './app-parts/01-state.js',
@@ -27,6 +28,7 @@ const applicationParts = [
   './app-parts/14-lyrics-controls.js',
   './app-parts/15-practice-controls.js',
   './app-parts/16-practice-focus.js',
+  './app-parts/17-song-chord-tray.js',
   './app-parts/07-events.js',
 ];
 
