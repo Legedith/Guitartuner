@@ -22,6 +22,7 @@ const applicationParts = [
   './app-parts/11-composition-matches.js',
   './app-parts/12-minimal-library.js',
   './app-parts/13-lyrics-scroll.js',
+  './app-parts/14-lyrics-controls.js',
   './app-parts/07-events.js',
 ];
 
