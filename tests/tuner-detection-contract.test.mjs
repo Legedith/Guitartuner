@@ -26,13 +26,13 @@ test('the live loop uses adaptive quiet-note detection, temporal smoothing, and 
   assert.match(detection, /VISUAL_PITCH_TIMEOUT_MS\s*=\s*1250/);
 });
 
-test('the visual tuner exposes an arc, active needle, and real auto/manual switch styling', () => {
-  assert.match(tunerCss, /--needle-angle/);
-  assert.match(tunerCss, /\.meter-ticks span:nth-child\(21\)/);
+test('the visual tuner exposes a precise ruler, active needle, and real auto/manual switch styling', () => {
+  assert.match(tunerCss, /--needle-position/);
+  assert.match(tunerCss, /left: 47%; width: 6%/);
   assert.match(tunerCss, /\.meter-needle\.is-active/);
   assert.match(tunerCss, /\.mode-slider input:checked\+\.mode-slider-track i/);
 });
 
 test('the offline cache is bumped for the tuner update', () => {
-  assert.match(serviceWorker, /fretline-v13/);
+  assert.match(serviceWorker, /fretline-v14/);
 });

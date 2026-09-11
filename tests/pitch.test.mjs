@@ -85,7 +85,7 @@ test('YIN rejects silence and broadband noise', () => {
 });
 
 test('target matching recovers a second harmonic and reports separation', () => {
-  const match = matchPitchToTargets(164.8138, [{ index: 0, frequency: 82.4069 }, { index: 1, frequency: 110 }]);
+  const match = matchPitchToTargets(164.8138, [{ index: 0, frequency: 82.4069 }, { index: 1, frequency: 110 }], { allowHarmonics: true });
   assert.ok(match);
   assert.equal(match.target.index, 0);
   assert.ok(Math.abs(match.cents) < 0.01);

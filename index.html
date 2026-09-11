@@ -62,14 +62,23 @@
 
     <main id="mainContent">
       <section class="tuner-card" id="tunerCard" data-state="idle" aria-label="Tuner">
-        <div class="listen-status" aria-live="polite"><span class="status-dot" aria-hidden="true"></span><span id="listenStatus">Microphone is off</span></div>
+        <div class="tuner-toolbar">
+          <div class="listen-status"><span class="status-dot" aria-hidden="true"></span><span id="listenStatus">Microphone is off</span></div>
+          <button class="calibration-button" id="calibrationButton" type="button" aria-label="Concert pitch A4, 440 hertz. Open settings">A4 · 440 Hz</button>
+        </div>
+        <div class="target-heading" id="targetHeading">Target · String 6</div>
         <div class="pitch-display" aria-label="Target note"><span class="pitch-note" id="pitchNote">E</span><span class="pitch-octave" id="pitchOctave">2</span></div>
+        <div class="pitch-readout"><strong id="pitchInstruction">Ready when you are</strong><span id="pitchDetail">Pluck one open string at a time.</span></div>
         <div class="meter" id="meter" aria-hidden="true">
           <div class="meter-track"><div class="in-tune-zone"></div><div class="meter-ticks" id="meterTicks"></div><div class="meter-needle" id="meterNeedle"><span></span></div></div>
-          <div class="meter-labels"><span>−50</span><span>0</span><span>+50</span></div>
+          <div class="meter-labels"><span>−50 · Flat</span><span>0</span><span>Sharp · +50</span></div>
         </div>
-        <div class="pitch-readout"><strong id="pitchInstruction">Ready when you are</strong><span><span id="pitchFrequency">— Hz</span><span aria-hidden="true"> · </span><span id="pitchCents">— cents</span></span></div>
-        <div class="signal-track" aria-hidden="true"><span id="signalLevel"></span></div>
+        <div class="pitch-measurements">
+          <div class="cents-readout" id="pitchCents">— cents</div>
+          <div class="frequency-readout"><span>Heard <strong id="pitchFrequency">— Hz</strong></span><span>Target <strong id="targetFrequency">82.4 Hz</strong></span></div>
+        </div>
+        <div class="signal-row"><span id="signalLabel">Input level</span><div class="signal-track" aria-hidden="true"><span id="signalLevel"></span></div><span id="signalQuality">Mic off</span></div>
+        <div class="sr-only" id="tunerAnnouncement" role="status" aria-live="polite" aria-atomic="true"></div>
         <div class="primary-actions">
           <button class="primary-button" id="microphoneButton" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg><span>Start tuning</span></button>
           <button class="secondary-button" id="toneButton" type="button" aria-label="Pluck reference string E2"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6.5 9H3v6h3.5L11 19V5ZM15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg><span>Pluck E2</span></button>
@@ -84,12 +93,13 @@
             <span class="mode-slider-track" aria-hidden="true"><span>Auto</span><span>Manual</span><i></i></span>
           </label>
         </div>
+        <p class="mode-hint" id="modeHint">Auto finds the string. Switch to Manual to lock one.</p>
         <div class="string-grid" id="stringsContainer" style="--string-count: 6"></div>
         <div class="progress-row"><span id="tunedProgress">0 of 6 strings tuned</span><button class="text-button" id="resetProgressButton" type="button" hidden>Reset</button></div>
       </section>
 
       <section class="ready-card" id="readyCard" hidden aria-live="polite">
-        <div><span class="eyebrow">Ready to play</span><h2>You’re in tune</h2><p>Review a chord shape or choose a song from your library.</p></div>
+        <div><span class="eyebrow">Ready to play</span><h2>Every string checked</h2><p>One final pass catches strings that shift as the neck settles.</p></div>
         <div class="ready-actions"><button class="secondary-button" id="readyChordsButton" type="button"><span>Chords</span></button><button class="primary-button" id="readyLibraryButton" type="button"><span>Library</span></button></div>
       </section>
     </main>
@@ -193,9 +203,9 @@
     <div class="sheet-header"><div><span class="eyebrow">Preferences</span><h2 id="settingsDialogTitle">Settings</h2></div><button class="icon-button close-dialog" type="button" aria-label="Close settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
     <section class="settings-section" aria-labelledby="calibrationHeading">
       <div class="setting-title-row"><div><h3 id="calibrationHeading">Concert pitch</h3><p>Reference frequency for A4</p></div><output id="referencePitchValue" for="referencePitch">440 Hz</output></div>
-      <div class="range-with-steps"><button class="step-button" id="referenceDown" type="button" aria-label="Decrease concert pitch">−</button><input id="referencePitch" type="range" min="430" max="450" step="1" value="440"><button class="step-button" id="referenceUp" type="button" aria-label="Increase concert pitch">+</button></div>
+      <div class="range-with-steps"><button class="step-button" id="referenceDown" type="button" aria-label="Decrease concert pitch">−</button><input id="referencePitch" type="range" min="430" max="450" step="1" value="440" aria-labelledby="calibrationHeading"><button class="step-button" id="referenceUp" type="button" aria-label="Increase concert pitch">+</button></div>
     </section>
-    <section class="settings-section" aria-labelledby="sensitivityHeading"><div class="setting-title-row"><div><h3 id="sensitivityHeading">Microphone sensitivity</h3><p>Raise it for quiet instruments</p></div><output id="sensitivityValue" for="sensitivity">Normal</output></div><input id="sensitivity" type="range" min="0" max="100" step="1" value="55"></section>
+    <section class="settings-section" aria-labelledby="sensitivityHeading"><div class="setting-title-row"><div><h3 id="sensitivityHeading">Microphone sensitivity</h3><p>Raise it for quiet instruments</p></div><output id="sensitivityValue" for="sensitivity">Normal</output></div><input id="sensitivity" type="range" min="0" max="100" step="1" value="55" aria-labelledby="sensitivityHeading"></section>
     <section class="settings-section" aria-labelledby="spellingHeading"><div class="setting-title-row"><div><h3 id="spellingHeading">Note spelling</h3><p>How accidentals are shown</p></div></div><div class="segmented-control compact" id="accidentalSwitch" aria-label="Note spelling"><button type="button" data-value="auto">Auto</button><button type="button" data-value="sharps">Sharps</button><button type="button" data-value="flats">Flats</button></div></section>
     <section class="settings-section" aria-labelledby="appearanceHeading"><div class="setting-title-row"><div><h3 id="appearanceHeading">Appearance</h3><p>Use system, light, or dark mode</p></div></div><div class="segmented-control compact" id="themeSwitch" aria-label="Appearance"><button type="button" data-value="system">System</button><button type="button" data-value="light">Light</button><button type="button" data-value="dark">Dark</button></div></section>
     <section class="settings-section switch-list" aria-label="Behavior">

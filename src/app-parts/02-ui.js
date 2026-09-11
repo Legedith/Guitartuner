@@ -21,6 +21,7 @@ function updateModeControl() {
   const manual = settings.mode === 'manual';
   dom.modeSwitch.checked = manual;
   dom.modeSwitch.title = manual ? 'Manual mode: the selected string is locked' : 'Auto mode: Fretline recognizes the string';
+  dom.modeHint.textContent = manual ? 'Tap a string to lock it. Only that target is checked.' : 'Auto finds the string. Switch to Manual to lock one.';
 }
 function targetLabel(target) { return `${target.note}${target.octave}`; }
 function updateToneButton() {
@@ -35,24 +36,39 @@ function updateActiveString() {
     const index = Number(button.dataset.index);
     button.setAttribute('aria-current', String(index === selectedTargetIndex));
     button.classList.toggle('is-tuned', tunedStrings.has(index));
+    const target = targets[index];
+    const checked = tunedStrings.has(index);
+    button.querySelector('.string-state').textContent = checked ? 'Tuned' : index === selectedTargetIndex ? (settings.mode === 'manual' ? 'Locked' : 'Selected') : '—';
+    button.setAttribute('aria-label', `String ${target.number}, ${targetLabel(target)}. ${checked ? 'Checked in tune.' : 'Not yet checked.'} ${settings.mode === 'manual' ? 'Select and lock this string.' : 'Select reference; Auto keeps detecting.'}`);
   });
+  updateTargetDetails();
   updateToneButton();
+}
+function updateTargetDetails() {
+  const target = targets[selectedTargetIndex];
+  if (!target) return;
+  dom.targetHeading.textContent = `${settings.mode === 'manual' ? 'Locked' : 'Target'} · String ${target.number}`;
+  dom.targetFrequency.textContent = `${target.frequency.toFixed(1)} Hz`;
+}
+function announceTuner(message, now = performance.now(), immediate = false) {
+  if (message === lastAnnouncement || (!immediate && now - lastAnnouncementAt < 1200)) return;
+  lastAnnouncement = message; lastAnnouncementAt = now; dom.tunerAnnouncement.textContent = message;
 }
 function renderStrings() {
   dom.stringsContainer.replaceChildren(); dom.stringsContainer.style.setProperty('--string-count', String(targets.length));
   for (const target of targets) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'string-button'; button.dataset.index = String(target.index);
     button.setAttribute('aria-label', `String ${target.number}, ${targetLabel(target)}. Select this string; with the microphone off, play its reference sound.`);
-    button.innerHTML = '<span class="string-check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m3.5 8.2 2.7 2.7 6.3-6.3"/></svg></span><span class="string-number"></span><span><span class="string-note"></span><span class="string-octave"></span></span>';
-    button.querySelector('.string-number').textContent = `String ${target.number}`;
+    button.innerHTML = '<span class="string-check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m3.5 8.2 2.7 2.7 6.3-6.3"/></svg></span><span class="string-number"></span><span><span class="string-note"></span><span class="string-octave"></span></span><span class="string-state" aria-hidden="true"></span>';
+    button.querySelector('.string-number').textContent = String(target.number);
     button.querySelector('.string-note').textContent = target.note; button.querySelector('.string-octave').textContent = String(target.octave);
-    button.addEventListener('click', () => { selectString(target.index, true); if (!listening) playReferenceString(); }); dom.stringsContainer.append(button);
+    button.addEventListener('click', () => { selectString(target.index); if (!listening && !microphoneBusy) playReferenceString(); }); dom.stringsContainer.append(button);
   }
   updateActiveString(); updateTunedProgress();
 }
 function updateTunedProgress() {
   const count = tunedStrings.size; const total = targets.length; const complete = count === total && total > 0;
-  dom.tunedProgress.textContent = complete ? 'All strings tuned' : `${count} of ${total} strings tuned`;
+  dom.tunedProgress.textContent = `${count} of ${total} strings checked`;
   dom.resetProgressButton.hidden = count === 0;
   dom.readyCard.hidden = !complete;
 }
