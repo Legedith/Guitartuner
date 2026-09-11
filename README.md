@@ -4,18 +4,25 @@ Fretline is a minimalist, installable guitar and ukulele tuner with tuning-aware
 
 ## Tuner
 
-- Accurate pitch detection using the YIN algorithm
+- YIN pitch detection with harmonic disambiguation and sample-rate-aware analysis frames
 - Six-string guitar and four-string ukulele modes
 - Standard tuning by default
 - Guitar presets: Drop D, half-step down, D standard, Drop C, DADGAD, Open G, Open D, and Open E
 - Ukulele presets: high-G standard, low G, D tuning, and baritone
 - Custom tunings for either instrument
 - Automatic string recognition or manual string lock through a proper slider switch
-- A4 calibration from 430–450 Hz
+- A4 calibration from 430–450 Hz, always visible on the tuner
 - Adjustable microphone sensitivity and note spelling
 - Guitar- and ukulele-specific plucked-string references generated on the device
-- Live guidance for quiet or unclear microphone input
-- Per-string progress, haptics, wake lock, and dark mode
+- A precise ±50-cent ruler with a true ±3-cent target band, tune-up/down guidance, and measured versus target frequency
+- Guidance for quiet, unclear, clipped, interrupted, and wrong-octave input
+- Continuous, confident note confirmation; checks are removed when a string drifts by more than six cents for 300 ms
+- Reference playback pauses analysis and clears its audio tail before detection resumes
+- Cancellable microphone startup, per-string progress, screen-reader guidance, haptics, wake lock, and dark mode
+
+Pluck one open string and let it settle. Auto selects the nearest string by its detected fundamental. Use Manual when a string is far out of tune or multiple strings share a target pitch. Manual compares the actual frequency: it does not fold a wrong octave into an in-tune result. A check requires at least 560 ms of continuous, clear readings inside ±3 cents. A faded needle is only the last reading and cannot earn a check.
+
+The detector supports the custom editor's C1–C7 range. A single pure harmonic cannot reveal which physical string produced it; mute the other strings and pluck again if the detected note is unexpected. Progress records strings checked during the session, not simultaneous measurements of all strings.
 
 ## Chord library
 

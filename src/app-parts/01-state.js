@@ -1,6 +1,5 @@
 const STORAGE_KEY = 'fretline:tuner:v1';
 const ANALYSIS_INTERVAL_MS = 58;
-const PITCH_TIMEOUT_MS = 480;
 const IN_TUNE_CENTS = 3;
 const STABLE_TUNE_MS = 560;
 const PITCH_CLASSES = ['C', 'C♯ / D♭', 'D', 'D♯ / E♭', 'E', 'F', 'F♯ / G♭', 'G', 'G♯ / A♭', 'A', 'A♯ / B♭', 'B'];
@@ -17,6 +16,7 @@ function clamp(value, min, max) { return Math.min(max, Math.max(min, value)); }
 function loadSettings() {
   let parsed = {};
   try { parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch (_) { parsed = {}; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) parsed = {};
   const customTunings = sanitizeCustomTunings(parsed.customTunings);
   const defaults = makeDefaults(customTunings);
   const instrument = Object.hasOwn(INSTRUMENTS, parsed.instrument) ? parsed.instrument : defaults.instrument;
@@ -29,7 +29,7 @@ function loadSettings() {
     ...defaults, instrument, tuningSelections,
     mode: parsed.mode === 'manual' ? 'manual' : 'auto',
     referenceA: clamp(Number(parsed.referenceA) || 440, 430, 450),
-    sensitivity: clamp(Number(parsed.sensitivity) || 55, 0, 100),
+    sensitivity: Number.isFinite(parsed.sensitivity) ? clamp(parsed.sensitivity, 0, 100) : 55,
     accidentalMode: ['auto', 'sharps', 'flats'].includes(parsed.accidentalMode) ? parsed.accidentalMode : 'auto',
     theme: ['system', 'light', 'dark'].includes(parsed.theme) ? parsed.theme : 'system',
     vibration: typeof parsed.vibration === 'boolean' ? parsed.vibration : true,
@@ -45,6 +45,7 @@ function loadSettings() {
 const settings = loadSettings();
 
 const dom = {
+  calibrationButton: document.querySelector('#calibrationButton'), targetHeading: document.querySelector('#targetHeading'), targetFrequency: document.querySelector('#targetFrequency'), pitchDetail: document.querySelector('#pitchDetail'), modeHint: document.querySelector('#modeHint'), signalQuality: document.querySelector('#signalQuality'), tunerAnnouncement: document.querySelector('#tunerAnnouncement'),
   themeColor: document.querySelector('#themeColor'), instrumentSwitch: document.querySelector('#instrumentSwitch'), tuningButton: document.querySelector('#tuningButton'), tuningName: document.querySelector('#tuningName'), tuningNotes: document.querySelector('#tuningNotes'),
   tunerCard: document.querySelector('#tunerCard'), listenStatus: document.querySelector('#listenStatus'), pitchNote: document.querySelector('#pitchNote'), pitchOctave: document.querySelector('#pitchOctave'), pitchInstruction: document.querySelector('#pitchInstruction'), pitchFrequency: document.querySelector('#pitchFrequency'), pitchCents: document.querySelector('#pitchCents'), meterNeedle: document.querySelector('#meterNeedle'), meterTicks: document.querySelector('#meterTicks'), signalLevel: document.querySelector('#signalLevel'), microphoneButton: document.querySelector('#microphoneButton'), toneButton: document.querySelector('#toneButton'),
   stringsContainer: document.querySelector('#stringsContainer'), modeSwitch: document.querySelector('#modeSwitch'), tunedProgress: document.querySelector('#tunedProgress'), resetProgressButton: document.querySelector('#resetProgressButton'), readyCard: document.querySelector('#readyCard'), readyChordsButton: document.querySelector('#readyChordsButton'), readyLibraryButton: document.querySelector('#readyLibraryButton'),
@@ -62,17 +63,17 @@ let currentTuning = null;
 let targets = [];
 let selectedTargetIndex = 0;
 let tunedStrings = new Set();
-let pitchHistory = [];
 let lastPitchAt = 0;
 let lastAnalysisAt = 0;
-let stableTargetIndex = null;
-let stableSince = 0;
-let pendingAutoTarget = null;
-let pendingAutoFrames = 0;
 let quietSignalSince = 0;
 let unclearSignalSince = 0;
 let animationFrame = 0;
 let microphoneBusy = false;
+let microphoneSession = 0;
+let microphoneInterrupted = false;
+let playbackGuardUntil = 0;
+let lastAnnouncement = '';
+let lastAnnouncementAt = 0;
 let listening = false;
 let mediaStream = null;
 let microphoneContext = null;
